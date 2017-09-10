@@ -102,18 +102,24 @@ TriventProc::TriventProc()
 
 
 	// noise cut
-	_noiseCut = 10;
+	int noiseCut = 10 ;
 	registerProcessorParameter("noiseCut" ,
 							   "noise cut in time spectrum 10 in default",
-							   _noiseCut ,
-							   _noiseCut);
+							   noiseCut ,
+							   10) ;
+
+	_noiseCut = static_cast<unsigned int>(noiseCut) ;
 
 	// time windows
-	_timeWin = 2;
+	int timeWin = 2;
 	registerProcessorParameter("timeWin" ,
 							   "time window = 2 in default",
-							   _timeWin ,
-							   _timeWin);
+							   timeWin ,
+							   2) ;
+
+	_timeWin = static_cast<unsigned int>(timeWin) ;
+
+
 	//maping on XML file
 	_geomXML = "setup_geometry.xml";
 	registerProcessorParameter("setup_geometry" ,
@@ -349,16 +355,25 @@ void TriventProc::getMaxTime()
 }
 
 
-std::vector<int> TriventProc::getTimeSpectrum()
+void TriventProc::computeTimeSpectrum()
 {
-	std::vector<int> time_spectrum(_maxtime + 1) ;
+	timeSpectrum.clear() ;
+	timeSpectrum.assign(_maxtime + 1 , 0) ;
 	for ( const auto& it : triggerHitMap )
-	{
-		if ( it.first >= 0 )
-			time_spectrum.at(it.first) += it.second.size() ;
-	}
+		timeSpectrum.at(it.first) += it.second.size() ;
+}
 
-	return time_spectrum ;
+bool TriventProc::isLocalPeak(unsigned int bin)
+{
+	for ( int i = bin - _timeWin ; i <= bin + _timeWin ; ++i )
+	{
+		if ( i < 0 || i == bin || i > _maxtime )
+			continue ;
+
+		if (timeSpectrum.at(bin) <= timeSpectrum.at(i) )
+			return false ;
+	}
+	return true ;
 }
 
 int IJKToKey(const int i,const int j,const int k){return 100*100*k+100*j+i;}
@@ -371,7 +386,7 @@ int findAsicKey(int i,int j,int k)
 	return k*1000+num;
 }
 
-bool TriventProc::eventBuilder(LCCollection* col_event , int time_peak , int prev_time_peak)
+bool TriventProc::eventBuilder(LCCollection* col_event , unsigned int time_peak , unsigned int prev_time_peak)
 {
 	//	std::cout << "eventBuilder" << std::endl ;
 	zcut.clear();
@@ -506,13 +521,15 @@ bool TriventProc::eventBuilder(LCCollection* col_event , int time_peak , int pre
 	return true ;
 }
 
-bool TriventProc::findTheBifSignal(int timeStamp)
+bool TriventProc::findTheBifSignal(unsigned int timeStamp)
 {
-//	int time_diff = std::numeric_limits<int>::max() ;
+	//	int time_diff = std::numeric_limits<int>::max() ;
 
-	std::map<int , std::vector<EVENT::RawCalorimeterHit*>>::iterator it ;
+	std::map<unsigned int , std::vector<EVENT::RawCalorimeterHit*>>::iterator it ;
 	for ( int i = timeStamp - cerenkovDelay - 1 ; i <= timeStamp - cerenkovDelay + 1 ; ++i )
 	{
+		if ( i < 0 )
+			continue ;
 		it = triggerHitMap.find(i) ;
 
 		if ( it != triggerHitMap.end() )
@@ -621,7 +638,6 @@ void TriventProc::processEvent( LCEvent* evtP )
 					}
 
 					// set raw hits
-					_trigger_raw_hit.clear() ;
 					triggerHitMap.clear() ;
 					std::vector<int> vTrigger;
 					for (int ihit(0); ihit < col->getNumberOfElements(); ++ihit)
@@ -629,8 +645,9 @@ void TriventProc::processEvent( LCEvent* evtP )
 						RawCalorimeterHit* raw_hit = dynamic_cast<RawCalorimeterHit*>( col->getElementAt(ihit) ) ;
 						if (NULL != raw_hit)
 						{
-							_trigger_raw_hit.push_back(raw_hit) ;
-							triggerHitMap[raw_hit->getTimeStamp()].push_back(raw_hit) ;
+							if (raw_hit->getTimeStamp() < 0 )
+								continue ;
+							triggerHitMap[static_cast<unsigned int>(raw_hit->getTimeStamp())].push_back(raw_hit) ;
 							//extract abolute bcid information:
 							if(ihit==0)
 							{
@@ -654,108 +671,113 @@ void TriventProc::processEvent( LCEvent* evtP )
 					//					auto sortHitsByTime = [](const RawCalorimeterHit* hit1 , const RawCalorimeterHit* hit2) -> bool { return hit1->getTimeStamp() < hit2->getTimeStamp() ; } ;
 					//					std::sort( _trigger_raw_hit.begin() , _trigger_raw_hit.end() , sortHitsByTime) ;
 					getMaxTime() ;
-					std::vector<int> time_spectrum = getTimeSpectrum();
+					computeTimeSpectrum() ;
 
 					//---------------------------------------------------------------
 					//! Find the condidate event
-					int ibin=0;
+					unsigned int ibin = 0 ;
 					int bin_c_prev = -2 * _timeWin ; //  the previous bin center
 
 					int time_prev = 0;
-					while(ibin < (_maxtime+1))
+					while( ibin < (_maxtime - 2) )
 					{
-						if(time_spectrum[ibin] >= _noiseCut &&
-						   time_spectrum[ibin] >= time_spectrum[ibin+1] &&
-						   time_spectrum[ibin] >= time_spectrum[ibin-1] &&
-						   time_spectrum[ibin] >= time_spectrum[ibin-2] &&
-						   time_spectrum[ibin] >= time_spectrum[ibin+2] )
+//						std::cout << "noiseCut : " << _noiseCut << std::endl ;
+//						std::cout << "timeSpectrum.size() : " << timeSpectrum.size() << std::endl ;
+//						std::cout << ibin << std::endl ;
+						if( timeSpectrum.at(ibin) <= _noiseCut || !isLocalPeak(ibin) )
 						{
-							LCEventImpl* evt = new LCEventImpl() ;     // create the event
+							ibin++ ;
+							continue ;
+						}
+//						std::cout << "event ok" << std::endl ;
 
-							//---------- set event paramters ------
-							const std::string parname_trigger = "trigger";
-							const std::string parname_energy  = "beamEnergy";
-							const std::string parname_bcid1 = "bcid1";
-							const std::string parname_bcid2 = "bcid2";
-							evt->parameters().setValue(parname_trigger,evtP->getEventNumber());
-							evt->parameters().setValue(parname_energy , _beamEnergy);
-							evt->parameters().setValue(parname_bcid1 , _bcid1);
-							evt->parameters().setValue(parname_bcid2 , _bcid2);
-							evt->parameters().setValue("eventTimeInTrigger" , time_spectrum[ibin]);
-							evt->setRunNumber( evtP->getRunNumber()) ;
-							//-------------------------------------
+						LCEventImpl* evt = new LCEventImpl() ;     // create the event
 
-							LCCollectionVec* outcol = new LCCollectionVec(LCIO::CALORIMETERHIT) ;
-							bool add = TriventProc::eventBuilder(outcol,ibin,bin_c_prev) ;
+						//---------- set event paramters ------
+						const std::string parname_trigger = "trigger";
+						const std::string parname_energy  = "beamEnergy";
+						const std::string parname_bcid1 = "bcid1";
+						const std::string parname_bcid2 = "bcid2";
+						evt->parameters().setValue(parname_trigger,evtP->getEventNumber());
+						evt->parameters().setValue(parname_energy , _beamEnergy);
+						evt->parameters().setValue(parname_bcid1 , _bcid1);
+						evt->parameters().setValue(parname_bcid2 , _bcid2);
+						evt->parameters().setValue("eventTimeInTrigger" , static_cast<int>(timeSpectrum.at(ibin)) ) ;
+						evt->setRunNumber( evtP->getRunNumber()) ;
+						//-------------------------------------
 
-							streamlog_out( DEBUG1 ) << "zcut.size() = " << zcut.size() << "\t _LayerCut = " << _LayerCut << std::endl ;
+						LCCollectionVec* outcol = new LCCollectionVec(LCIO::CALORIMETERHIT) ;
+						bool add = TriventProc::eventBuilder(outcol,ibin,bin_c_prev) ;
 
-							int maxConsecutiveLayers = 0 ;
-							int currentCtr = 1 ;
-							int previousOk = std::numeric_limits<int>::min() ;
-							bool bonusAllowed = false ;
-							for ( std::set<int>::iterator it = zcut.begin() ; it != zcut.end() ; ++it )
+						streamlog_out( DEBUG1 ) << "zcut.size() = " << zcut.size() << "\t _LayerCut = " << _LayerCut << std::endl ;
+
+						int maxConsecutiveLayers = 0 ;
+						int currentCtr = 1 ;
+						int previousOk = std::numeric_limits<int>::min() ;
+						bool bonusAllowed = false ;
+						for ( std::set<int>::iterator it = zcut.begin() ; it != zcut.end() ; ++it )
+						{
+							if ( *it == previousOk + 1 )
 							{
-								if ( *it == previousOk + 1 )
-								{
-									currentCtr++ ;
-									if ( currentCtr > maxConsecutiveLayers )
-										maxConsecutiveLayers = currentCtr ;
-								}
-								else if ( *it == previousOk + 2 && !bonusAllowed )
-								{
-									bonusAllowed = true ;
-									currentCtr++ ;
-									if ( currentCtr > maxConsecutiveLayers )
-										maxConsecutiveLayers = currentCtr ;
-								}
-								else
-								{
-									currentCtr = 1 ;
-									bonusAllowed = false ;
-								}
-
-								previousOk = *it ;
-								if ( maxConsecutiveLayers > _LayerCut )
-									break ;
+								currentCtr++ ;
+								if ( currentCtr > maxConsecutiveLayers )
+									maxConsecutiveLayers = currentCtr ;
 							}
-
-							if( maxConsecutiveLayers >_LayerCut && abs(int(ibin)-time_prev) > _time2prev_event_cut && add)
+							else if ( *it == previousOk + 2 && !bonusAllowed )
 							{
-								streamlog_out( DEBUG5 ) <<green<<" Trivent find event at :==> "<< red << ibin
-													   <<green<<"\t :Nhit: ==> "<< magenta
-													  <<outcol->getNumberOfElements() << normal <<std::endl;
-								evt->setEventNumber( evtnum++ ) ;
-
-								if( findTheBifSignal(ibin) )
-								{
-									evt->parameters().setValue("cerenkovTag",true) ;
-									evt->parameters().setValue("cerenkovTime",_cerenkovTime) ;
-									streamlog_out( DEBUG ) << evtnum << " is tagged by Cerenkov " << ibin << std::endl;
-								}
-								else
-									evt->parameters().setValue("cerenkovTag",false) ;
-								evt->addCollection(outcol, "SDHCAL_HIT");
-								_lcWriter->writeEvent( evt ) ;
-								currentTriggerNEvents++ ;
+								bonusAllowed = true ;
+								currentCtr++ ;
+								if ( currentCtr > maxConsecutiveLayers )
+									maxConsecutiveLayers = currentCtr ;
 							}
 							else
 							{
-								_rejectedNum++ ;
-								delete outcol ;
+								currentCtr = 1 ;
+								bonusAllowed = false ;
 							}
-							time_prev = ibin ;
-							delete evt ; evt = nullptr ;
 
-							bin_c_prev = ibin;
-							ibin = ibin + _timeWin ;
+							previousOk = *it ;
+							if ( maxConsecutiveLayers > _LayerCut )
+								break ;
+						}
+
+						if( maxConsecutiveLayers >_LayerCut && abs(int(ibin)-time_prev) > _time2prev_event_cut && add)
+						{
+							streamlog_out( DEBUG5 ) <<green<<" Trivent find event at :==> "<< red << ibin
+												   <<green<<"\t :Nhit: ==> "<< magenta
+												  <<outcol->getNumberOfElements() << normal <<std::endl;
+							evt->setEventNumber( evtnum++ ) ;
+
+							if( findTheBifSignal(ibin) )
+							{
+								evt->parameters().setValue("cerenkovTag",true) ;
+								evt->parameters().setValue("cerenkovTime",_cerenkovTime) ;
+								streamlog_out( DEBUG ) << evtnum << " is tagged by Cerenkov " << ibin << std::endl;
+							}
+							else
+								evt->parameters().setValue("cerenkovTag",false) ;
+							evt->addCollection(outcol, "SDHCAL_HIT");
+							_lcWriter->writeEvent( evt ) ;
+							currentTriggerNEvents++ ;
 						}
 						else
-							ibin++ ;
+						{
+							_rejectedNum++ ;
+							delete outcol ;
+						}
+						time_prev = ibin ;
+						delete evt ;
+						evt = nullptr ;
+
+						bin_c_prev = ibin;
+						ibin = ibin + _timeWin ;
+
+
 					}
 
 				}
 				catch (lcio::DataNotAvailableException zero) {}
+				catch ( std::out_of_range& e) { std::cout << e.what() << std::endl ; }
 
 				std::cout << "nEvents : " << currentTriggerNEvents << std::endl ;
 			}

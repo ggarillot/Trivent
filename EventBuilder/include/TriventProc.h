@@ -45,24 +45,24 @@ class TriventProc : public marlin::Processor
 		uint    getCellChan_id(int cell_id);
 
 		void    getMaxTime();
-		std::vector<int> getTimeSpectrum();
+		void computeTimeSpectrum() ;
+		bool isLocalPeak(unsigned int bin) ;
 		uint*   getPadIndex(uint dif_id, uint asic_id, uint chan_id);
-		bool    eventBuilder(LCCollection* col_event,int time_peak, int prev_time_peak);
-		bool    findTheBifSignal(int timeStamp);
+		bool    eventBuilder(LCCollection* col_event, unsigned int time_peak, unsigned int prev_time_peak) ;
+		bool    findTheBifSignal(unsigned int timeStamp);
 
 		void    end();
 
 	protected :
-		TH1F *noise_dist;
-		TH1F *gain_chan;
-		TH1F *mean_hit_dif;
-		TH1F *time_hit_dif;
+		TH1F *noise_dist = nullptr ;
+		TH1F *gain_chan = nullptr ;
+		TH1F *mean_hit_dif = nullptr ;
+		TH1F *time_hit_dif = nullptr ;
 		// xml test
-		std::map<std::string,std::string> m_parameters;
+		std::map<std::string,std::string> m_parameters {{}} ;
 
-		std::vector<EVENT::RawCalorimeterHit*> _trigger_raw_hit;
-
-		std::map<int , std::vector<EVENT::RawCalorimeterHit*>> triggerHitMap ;
+		std::map<unsigned int , std::vector<EVENT::RawCalorimeterHit*>> triggerHitMap {{}} ;
+		std::vector<unsigned int> timeSpectrum {} ;
 
 		bool GAIN_CORRECTION_MODE;
 		std::string _outFileName;
@@ -76,32 +76,32 @@ class TriventProc : public marlin::Processor
 		std::ostream *_output;
 		std::vector<std::string> _hcalCollections;
 		int _overwrite;
-		TTree *_outputTree;
+		TTree*_outputTree = nullptr ;
 		unsigned int _eventNr;
 		Int_t _Nhit;
 		Int_t _elec_noise_cut;
 
-		std::map<int, LayerID  > _mapping;
-		std::map<int, double  > _chamber_pos;//camber , pos
+		std::map<int, LayerID> _mapping = {{}} ;
+		std::map<int, double> _chamber_pos = {{}} ;//camber , pos
 
-		bool removeSquareEvents ;
-		bool removeRamFullEvents ;
+		bool removeSquareEvents = true ;
+		bool removeRamFullEvents = true ;
 
 		int cerenkovBif = 0 ;
 		int cerenkovDelay = 0 ;
 
-		int _noiseCut;
-		int _timeWin;
-		int _LayerCut;
-		int _time2prev_event_cut;
+		unsigned int _noiseCut = 10 ;
+		unsigned int _timeWin = 2 ;
+		int _LayerCut = 5 ;
+		int _time2prev_event_cut = 0 ;
 		int _cerenkovTime;
 		float _beamEnergy;
 		int trig_count;
-		int _maxtime;
+		unsigned int _maxtime = 0 ;
 		int evtnum;
 		int _rejectedNum;
 		uint _index[3];
-		std::set<int> zcut ;
+		std::set<int> zcut {} ;
 		//		uintVec zcut;
 		LCWriter* _lcWriter;
 		int _bcid1;
