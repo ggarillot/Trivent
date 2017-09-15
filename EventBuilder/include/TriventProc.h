@@ -37,7 +37,6 @@ class TriventProc : public marlin::Processor
 
 		void    processEvent( LCEvent * evtP );
 		void    XMLReader(std::string xmlfile);
-		void    readDifGeomFile(std::string geomfile);
 		void    printDifGeom();
 
 		uint    getCellDif_id(int cell_id);
@@ -47,75 +46,72 @@ class TriventProc : public marlin::Processor
 		void    getMaxTime();
 		void computeTimeSpectrum() ;
 		bool isLocalPeak(unsigned int bin) ;
-		uint*   getPadIndex(uint dif_id, uint asic_id, uint chan_id);
+		uint*   getPadIndex(uint dif_id, uint asic_id, uint chan_id) ;
 		bool    eventBuilder(LCCollection* col_event, unsigned int time_peak, unsigned int prev_time_peak) ;
-		bool    findTheBifSignal(unsigned int timeStamp);
+		int	findTheBifSignal(unsigned int timeStamp) ;
 
 		void    end();
 
+		TriventProc(const TriventProc&) = delete ;
+		void operator=(const TriventProc&) = delete ;
+
+
 	protected :
-		TH1F *noise_dist = nullptr ;
-		TH1F *gain_chan = nullptr ;
-		TH1F *mean_hit_dif = nullptr ;
-		TH1F *time_hit_dif = nullptr ;
 		// xml test
 		std::map<std::string,std::string> m_parameters {{}} ;
 
 		std::map<unsigned int , std::vector<EVENT::RawCalorimeterHit*>> triggerHitMap {{}} ;
 		std::vector<unsigned int> timeSpectrum {} ;
 
-		bool GAIN_CORRECTION_MODE;
-		std::string _outFileName;
-		std::string _noiseFileName;
-		std::string _treeName;
-		std::string _logrootName;
-		std::string _colName;
-		std::string _fileName;
-		std::string _mappingfile;
-		std::string _geomXML;
-		std::ostream *_output;
-		std::vector<std::string> _hcalCollections;
-		int _overwrite;
-		TTree*_outputTree = nullptr ;
+		std::string _outFileName = "" ;
+
+		std::string _colName = "" ;
+		std::string _fileName = "" ;
+		std::string _geomXML = "" ;
+
+		std::vector<std::string> _hcalCollections {} ;
+
 		unsigned int _eventNr;
-		Int_t _Nhit;
-		Int_t _elec_noise_cut;
+		Int_t _elec_noise_cut = 500000 ;
 
 		std::map<int, LayerID> _mapping = {{}} ;
-		std::map<int, double> _chamber_pos = {{}} ;//camber , pos
 
 		bool removeSquareEvents = true ;
 		bool removeRamFullEvents = true ;
 
-		int cerenkovBif = 0 ;
+		unsigned int cerenkovBif = 3 ;
 		int cerenkovDelay = 0 ;
 
 		unsigned int _noiseCut = 10 ;
 		unsigned int _timeWin = 2 ;
+
+		int _cerenkovBifForMarlin = 3 ;
+		int _noiseCutForMarlin = 10 ;
+		int _timeWinForMarlin = 2 ;
+
 		int _LayerCut = 5 ;
 		int _time2prev_event_cut = 0 ;
 		int _cerenkovTime;
-		float _beamEnergy;
-		int trig_count;
+		float _beamEnergy = 0 ;
+		int trig_count = 0 ;
 		unsigned int _maxtime = 0 ;
-		int evtnum;
-		int _rejectedNum;
-		uint _index[3];
+		int evtnum ;
+		int _rejectedNum ;
+		uint _index[3] = {0,0,0} ;
 		std::set<int> zcut {} ;
-		//		uintVec zcut;
-		LCWriter* _lcWriter;
+		LCWriter* _lcWriter = nullptr ;
 		int _bcid1;
 		int _bcid2;
 
-		std::string _outputFormat;
+		std::string _outputFormat = "" ;
 
-		std::string normal  ;
-		std::string red     ;
-		std::string green   ;
-		std::string yellow  ;
-		std::string blue    ;
-		std::string magenta ;
-		std::string white   ;
+		std::string normal  = {0x1b,'[','0',';','3','9','m',0} ;
+		std::string red     = {0x1b,'[','1',';','3','1','m',0} ;
+		std::string green   = {0x1b,'[','1',';','3','2','m',0} ;
+		std::string yellow  = {0x1b,'[','1',';','3','3','m',0} ;
+		std::string blue    = {0x1b,'[','1',';','3','4','m',0} ;
+		std::string magenta = {0x1b,'[','1',';','3','5','m',0} ;
+		std::string white   = {0x1b,'[','1',';','3','9','m',0} ;
 
 } ;
 #endif //TriventProc_h

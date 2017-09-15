@@ -28,15 +28,14 @@
 #include "marlin/tinyxml.h"
 
 #include <limits>
+#include <algorithm>
+#include <exception>
 
 TriventProc a_TriventProc_instance ;
 
 //=========================================================
 TriventProc::TriventProc()
-	: Processor("TriventProc"),
-	  _output(0),
-	  _outputTree(0)//,
-	//_hitArray(0)
+	: Processor("TriventProc")
 {
 
 	streamlog_out( MESSAGE )<< "Trivent ... begin " << endl;
@@ -49,38 +48,31 @@ TriventProc::TriventProc()
 							  "HCALCollections"       ,
 							  "HCAL Collection Names" ,
 							  _hcalCollections        ,
-							  hcalCollections         );
+							  hcalCollections         ) ;
 
 	// Option of output file with clean events
 	_outFileName="LCIO_clean_run.slcio";
 	registerProcessorParameter("LCIOOutputFile" ,
 							   "LCIO file" ,
 							   _outFileName ,
-							   _outFileName);
+							   _outFileName) ;
 	// Energy
-	_beamEnergy = 10;
 	registerProcessorParameter("beamEnergy" ,
 							   "The beam ",
 							   _beamEnergy ,
-							   _beamEnergy);
-
+							   0.0f) ;
 	registerProcessorParameter("cerenkovBif" ,
 							   "dif for cerenkov hits" ,
-							   cerenkovBif ,
+							   _cerenkovBifForMarlin ,
 							   3) ;
+
+	cerenkovBif = static_cast<unsigned int>(_cerenkovBifForMarlin) ;
 
 	registerProcessorParameter("cerenkovDelay" ,
 							   "cerenkovDelay",
 							   cerenkovDelay ,
 							   0) ;
 
-
-	// Option of output file with noise
-	_noiseFileName="noise_run.slcio";
-	registerProcessorParameter("NOISEutputFile" ,
-							   "NOISE file" ,
-							   _noiseFileName ,
-							   _noiseFileName);
 
 
 	registerProcessorParameter("RemoveSquareEvents" ,
@@ -102,71 +94,40 @@ TriventProc::TriventProc()
 
 
 	// noise cut
-	int noiseCut = 10 ;
 	registerProcessorParameter("noiseCut" ,
 							   "noise cut in time spectrum 10 in default",
-							   noiseCut ,
+							   _noiseCutForMarlin ,
 							   10) ;
 
-	_noiseCut = static_cast<unsigned int>(noiseCut) ;
+	_noiseCut = static_cast<unsigned int>(_noiseCutForMarlin) ;
 
 	// time windows
-	int timeWin = 2;
 	registerProcessorParameter("timeWin" ,
 							   "time window = 2 in default",
-							   timeWin ,
+							   _timeWinForMarlin ,
 							   2) ;
 
-	_timeWin = static_cast<unsigned int>(timeWin) ;
+	_timeWin = static_cast<unsigned int>(_timeWinForMarlin) ;
 
 
 	//maping on XML file
-	_geomXML = "setup_geometry.xml";
 	registerProcessorParameter("setup_geometry" ,
-							   "Dif geometry and position on the detector XML",
-							   _geomXML,
-							   _geomXML);
+							   "Dif geometry and position on the detector XML" ,
+							   _geomXML ,
+							   std::string("") ) ;
 
-	//maping on txt file
-	_mappingfile = "mapping_ps.txt";
-	registerProcessorParameter("DIFMapping" ,
-							   "dif's mapping file ",
-							   _mappingfile,
-							   _mappingfile);
 
 	// electronic noise cut
-	_elec_noise_cut = 5000;
 	registerProcessorParameter("electronic_noise_cut" ,
 							   "number of hit max on time stamp",
 							   _elec_noise_cut,
-							   _elec_noise_cut);
+							   500000) ;
 
-	// electronic noise cut
-	_time2prev_event_cut = 0;
 	registerProcessorParameter("_time2prev_event_cut" ,
 							   "cut on time to previous event (x 200 ns)",
 							   _time2prev_event_cut,
-							   _time2prev_event_cut);
+							   0) ;
 
-
-	//log root file
-	_treeName = "TEST";
-	registerProcessorParameter("TreeName_logroot" ,
-							   "Logroot tree name",
-							   _treeName,
-							   _treeName);
-	// histogram control tree
-	_logrootName = "logroot.root";
-	registerProcessorParameter("logroot_Name" ,
-							   "Logroot name",
-							   _logrootName,
-							   _logrootName);
-
-	GAIN_CORRECTION_MODE = false;
-	registerProcessorParameter("GAIN_CORRECTION_MODE",
-							   "GAIN_CORRECTION_MODE",
-							   GAIN_CORRECTION_MODE,
-							   GAIN_CORRECTION_MODE);
 
 	registerProcessorParameter( "DataFormat" ,
 								"Data Format string: it could be M:3,S-1:3,I:9,J:9,K-1:6 (ILD_ENDCAP) or I:9,J:9,K-1:6,Dif_id:8,Asic_id:6,Chan_id:7",
@@ -174,7 +135,29 @@ TriventProc::TriventProc()
 								std::string("M:3,S-1:3,I:9,J:9,K-1:6"));
 }
 
-void TriventProc::XMLReader(std::string xmlfile){
+//===============================================
+void TriventProc::init()
+{
+	printParameters() ;
+
+	if ( _geomXML == std::string("") )
+		throw std::invalid_argument("wtf put a geometry plz") ;
+
+	trig_count = 0 ;
+
+	_lcWriter = LCFactory::getInstance()->createLCWriter() ;
+	_lcWriter->setCompressionLevel( 0 ) ;
+	_lcWriter->open(_outFileName.c_str(),LCIO::WRITE_NEW) ;
+
+	XMLReader(_geomXML.c_str()) ;
+	printDifGeom() ;
+	evtnum=0;// event number
+
+}
+
+//===============================================
+void TriventProc::XMLReader(std::string xmlfile)
+{
 	TiXmlDocument doc(xmlfile.c_str());
 	bool load_key = doc.LoadFile();
 	if(load_key){
@@ -270,8 +253,6 @@ void TriventProc::XMLReader(std::string xmlfile){
 						}
 						istringstream ( result.at(0) ) >> Dif_id;
 						istringstream ( result.at(3) ) >> position;
-
-						_chamber_pos[Dif_id] = position;
 					}
 				}
 			}
@@ -281,33 +262,11 @@ void TriventProc::XMLReader(std::string xmlfile){
 	}
 }
 
-void TriventProc::readDifGeomFile(std::string geomfile){
+void TriventProc::printDifGeom()
+{
 
-	cout << "read the mapping file .."<< endl;
-
-	LayerID contenu;
-	ifstream file(geomfile.c_str(), ios::in);
-	if(file){
-		while(!file.eof()){
-			int Dif_id;
-			char co;
-			file >> Dif_id >> co
-					>> contenu.K >> co
-					>> contenu.DifX >> co
-					>> contenu.DifY >> co
-					>> contenu.IncX >> co
-					>> contenu.IncY ;
-			_mapping [Dif_id] = contenu;
-		}
-		file.close();
-	}
-	else
-		cerr << "ERROR ... maping file not correct !" << endl;
-}
-
-void TriventProc::printDifGeom(){
-
-	for(std::map<int,LayerID>::iterator itt = _mapping.begin();itt!=_mapping.end();itt++)     {
+	for(std::map<int,LayerID>::iterator itt = _mapping.begin();itt!=_mapping.end();itt++)
+	{
 		streamlog_out( MESSAGE ) << itt->first << "\t" << itt->second.K
 								 <<"\t"<<itt->second.DifX
 								<<"\t"<<itt->second.DifY
@@ -365,9 +324,12 @@ void TriventProc::computeTimeSpectrum()
 
 bool TriventProc::isLocalPeak(unsigned int bin)
 {
-	for ( int i = bin - _timeWin ; i <= bin + _timeWin ; ++i )
+	int min = std::max( static_cast<int>(bin - _timeWin) , 0 ) ;
+	int max = std::max( static_cast<int>(bin + _timeWin) , 0 ) ;
+
+	for ( unsigned int i = static_cast<unsigned int>(min) ; i <= static_cast<unsigned int>(max) ; ++i )
 	{
-		if ( i < 0 || i == bin || i > _maxtime )
+		if ( i == bin || i > _maxtime )
 			continue ;
 
 		if (timeSpectrum.at(bin) <= timeSpectrum.at(i) )
@@ -388,8 +350,7 @@ int findAsicKey(int i,int j,int k)
 
 bool TriventProc::eventBuilder(LCCollection* col_event , unsigned int time_peak , unsigned int prev_time_peak)
 {
-	//	std::cout << "eventBuilder" << std::endl ;
-	zcut.clear();
+	zcut.clear() ;
 	col_event->setFlag(col_event->getFlag()|( 1 << LCIO::RCHBIT_LONG));
 	col_event->setFlag(col_event->getFlag()|( 1 << LCIO::RCHBIT_TIME));
 	CellIDEncoder<CalorimeterHitImpl> cd( _outputFormat.c_str() ,col_event) ;
@@ -400,7 +361,11 @@ bool TriventProc::eventBuilder(LCCollection* col_event , unsigned int time_peak 
 	try
 	{
 		std::vector<int> hitKeys ;
-		for ( int i = time_peak - _timeWin ; i <= time_peak + _timeWin ; ++i )
+
+		int min = std::max( static_cast<int>(time_peak - _timeWin) , 0 ) ;
+		int max = std::max( static_cast<int>(time_peak + _timeWin) , 0 ) ;
+
+		for ( unsigned int i = static_cast<unsigned int>(min) ; i <= static_cast<unsigned int>(max) ; ++i )
 		{
 			if ( triggerHitMap.find(i) == triggerHitMap.end() )
 				continue ;
@@ -521,15 +486,15 @@ bool TriventProc::eventBuilder(LCCollection* col_event , unsigned int time_peak 
 	return true ;
 }
 
-bool TriventProc::findTheBifSignal(unsigned int timeStamp)
+int TriventProc::findTheBifSignal(unsigned int timeStamp)
 {
-	//	int time_diff = std::numeric_limits<int>::max() ;
+	std::map<unsigned int , std::vector<EVENT::RawCalorimeterHit*>>::iterator it = triggerHitMap.end() ;
 
-	std::map<unsigned int , std::vector<EVENT::RawCalorimeterHit*>>::iterator it ;
-	for ( int i = timeStamp - cerenkovDelay - 1 ; i <= timeStamp - cerenkovDelay + 1 ; ++i )
+	int min = std::max( static_cast<int>(timeStamp) - cerenkovDelay - 1 , 0 ) ;
+	int max = std::max( static_cast<int>(timeStamp) - cerenkovDelay + 1 , 0 ) ;
+
+	for ( unsigned int i = static_cast<unsigned int>(min) ; i <= static_cast<unsigned int>(max) ; ++i )
 	{
-		if ( i < 0 )
-			continue ;
 		it = triggerHitMap.find(i) ;
 
 		if ( it != triggerHitMap.end() )
@@ -537,72 +502,23 @@ bool TriventProc::findTheBifSignal(unsigned int timeStamp)
 	}
 
 	if ( it == triggerHitMap.end() )
-		return false ;
-
+		return 0 ;
 
 	for ( auto& jt : it->second )
 	{
 		if ( getCellDif_id( jt->getCellID0() ) == cerenkovBif )
 		{
-			//			std::cout << "Dif " << getCellDif_id( jt->getCellID0() )
-			//					  << " , Asic " << getCellAsic_id( jt->getCellID0() )
-			//					  << " , Pad " << getCellChan_id( jt->getCellID0())
-			//					  << " , Thr " << jt->getAmplitude() << std::endl ;
+			//						std::cout << "Dif " << getCellDif_id( jt->getCellID0() )
+			//								  << " , Asic " << getCellAsic_id( jt->getCellID0() )
+			//								  << " , Pad " << getCellChan_id( jt->getCellID0())
+			//								  << " , Thr " << jt->getAmplitude() << std::endl ;
 			_cerenkovTime = it->first - timeStamp ;
-			return true ;
+			return jt->getAmplitude() ;
 		}
 	}
-
-	return false ;
-
-	//	for(std::vector<EVENT::RawCalorimeterHit*>::iterator rawhit = _trigger_raw_hit.begin() ; rawhit != _trigger_raw_hit.end() ; rawhit++)
-	//	{
-	//		if( getCellDif_id((*rawhit)->getCellID0())==3 && fabs(timeStamp-(*rawhit)->getTimeStamp())<time_diff /*&& time_peak-(*rawhit)->getTimeStamp()>0*/ )
-	//			time_diff=fabs(timeStamp-(*rawhit)->getTimeStamp());
-	//	}
-	//	if( time_diff<cerenkovDelay ) {
-	//		_cerenkovTime=time_diff;
-	//		return true;
-	//	}
-	//	else return false;
+	return 0 ;
 }
-//===============================================
-void TriventProc::init() {
-	trig_count = 0;
-	//========================
-	//readDifGeomFile(_mappingfile.c_str());
 
-	// ========================
-
-	printParameters();
-	// new process
-
-	char cnormal[8] =  {0x1b,'[','0',';','3','9','m',0};
-	char cred[8]     = {0x1b,'[','1',';','3','1','m',0};
-	char cgreen[8]   = {0x1b,'[','1',';','3','2','m',0};
-	char cyellow[8]  = {0x1b,'[','1',';','3','3','m',0};
-	char cblue[8]    = {0x1b,'[','1',';','3','4','m',0};
-	char cmagenta[8] = {0x1b,'[','1',';','3','5','m',0};
-	char cwhite[8]   = {0x1b,'[','1',';','3','9','m',0};
-
-	normal   = cnormal;
-	red      = cred;
-	green    = cgreen;
-	yellow   = cyellow;
-	blue     = cblue;
-	magenta  = cmagenta;
-	white    = cwhite;
-
-	_lcWriter = LCFactory::getInstance()->createLCWriter() ;
-	_lcWriter->setCompressionLevel( 0 ) ;
-	_lcWriter->open(_outFileName.c_str(),LCIO::WRITE_NEW) ;
-
-
-	XMLReader(_geomXML.c_str());
-	printDifGeom();
-	evtnum=0;// event number
-
-}
 
 //==================================================================================
 void TriventProc::processEvent( LCEvent* evtP )
@@ -668,34 +584,27 @@ void TriventProc::processEvent( LCEvent* evtP )
 							}
 						}
 					}
-					//					auto sortHitsByTime = [](const RawCalorimeterHit* hit1 , const RawCalorimeterHit* hit2) -> bool { return hit1->getTimeStamp() < hit2->getTimeStamp() ; } ;
-					//					std::sort( _trigger_raw_hit.begin() , _trigger_raw_hit.end() , sortHitsByTime) ;
+
 					getMaxTime() ;
 					computeTimeSpectrum() ;
 
-					//---------------------------------------------------------------
-					//! Find the condidate event
 					unsigned int ibin = 0 ;
 					int bin_c_prev = -2 * _timeWin ; //  the previous bin center
 
 					int time_prev = 0;
 					while( ibin < (_maxtime - 2) )
 					{
-//						std::cout << "noiseCut : " << _noiseCut << std::endl ;
-//						std::cout << "timeSpectrum.size() : " << timeSpectrum.size() << std::endl ;
-//						std::cout << ibin << std::endl ;
 						if( timeSpectrum.at(ibin) <= _noiseCut || !isLocalPeak(ibin) )
 						{
 							ibin++ ;
 							continue ;
 						}
-//						std::cout << "event ok" << std::endl ;
 
 						LCEventImpl* evt = new LCEventImpl() ;     // create the event
 
 						//---------- set event paramters ------
 						const std::string parname_trigger = "trigger";
-						const std::string parname_energy  = "beamEnergy";
+						const std::string parname_energy  = "ParticleEnergy";
 						const std::string parname_bcid1 = "bcid1";
 						const std::string parname_bcid2 = "bcid2";
 						evt->parameters().setValue(parname_trigger,evtP->getEventNumber());
@@ -748,14 +657,7 @@ void TriventProc::processEvent( LCEvent* evtP )
 												  <<outcol->getNumberOfElements() << normal <<std::endl;
 							evt->setEventNumber( evtnum++ ) ;
 
-							if( findTheBifSignal(ibin) )
-							{
-								evt->parameters().setValue("cerenkovTag",true) ;
-								evt->parameters().setValue("cerenkovTime",_cerenkovTime) ;
-								streamlog_out( DEBUG ) << evtnum << " is tagged by Cerenkov " << ibin << std::endl;
-							}
-							else
-								evt->parameters().setValue("cerenkovTag",false) ;
+							evt->parameters().setValue("cerenkovTag" , findTheBifSignal(ibin) ) ;
 							evt->addCollection(outcol, "SDHCAL_HIT");
 							_lcWriter->writeEvent( evt ) ;
 							currentTriggerNEvents++ ;
@@ -771,8 +673,6 @@ void TriventProc::processEvent( LCEvent* evtP )
 
 						bin_c_prev = ibin;
 						ibin = ibin + _timeWin ;
-
-
 					}
 
 				}
@@ -794,12 +694,6 @@ void TriventProc::end()
 	streamlog_out( MESSAGE )<< "Trivent Rejected "<< _rejectedNum <<" events"<<std::endl;
 	streamlog_out( MESSAGE )<< "Trivent end"<<std::endl;
 	//cc.StoreHistos("test.root");
-	_lcWriter->close();
-
-	if (_outputTree) {
-		TFile *_logroot = _outputTree->GetCurrentFile();
-		_logroot->Write();
-		delete _logroot;
-	}
+	_lcWriter->close() ;
 }
 //==============================================================
