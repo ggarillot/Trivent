@@ -14,6 +14,7 @@ class Params :
 		self.removeSquareEvents = True
 		self.removeRamFullEvents = True
 		self.geometry = ""
+		self.outputFileName = "TDHCAL.slcio"
 
 
 def launch(a , files) :
@@ -62,43 +63,3 @@ def launch(a , files) :
 	os.system('Marlin ' + xmlFileName)
 	os.system('rm ' + xmlFileName)
 	os.system('mv ' + tempOutputFile + ' ' + a.outputFileName)
-
-
-
-if __name__ == '__main__' :
-
-	parser = argparse.ArgumentParser()
-	parser.add_argument('runNumber' , help='The run number to process' , type=int)
-	parser.add_argument('-e' , '--energy' , help='Energy of the run' , type=float , default=0)
-	parser.add_argument('-g' , '--geom' , help='Geometry file' , type=str , default='')
-	args = parser.parse_args()
-
-	runNumber = str(args.runNumber) 
-
-	dir = '/home/garillot/files/DATA/STREAMOUT'
-
-	print ('Searching files in ' + dir)
-
-	#list files
-	fileList = []
-
-	for fileName in os.listdir(dir) :
-		if runNumber in fileName :
-			fileList.append(dir + '/' + fileName)
-
-	print 'File List :'
-	print fileList
-
-	os.environ["MARLIN"] = '/home/garillot/ilcsoft/v01-19-03/Marlin/v01-12'
-	os.environ["PATH"] = '/home/garillot/ilcsoft/v01-19-03/Marlin/v01-12/bin' + ':' + os.environ["PATH"]
-	os.environ["MARLIN_DLL"] = '/home/garillot/Trivent/lib/libTrivent.so'
-
-	a = Params()
-	a.energy = args.energy
-	a.geometry = args.geom
-	a.cerenkovDelay = 6
-
-	a.outputFileName = '/home/garillot/files/DATA/TDHCAL_' + str(sys.argv[1]) + '.slcio'
-
-	launch(a , fileList)
-

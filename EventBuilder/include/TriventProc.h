@@ -71,7 +71,7 @@ class TriventProc : public marlin::Processor
 
 		std::vector<std::string> _hcalCollections {} ;
 
-		unsigned int _eventNr;
+		unsigned int _eventNr = 0 ;
 		Int_t _elec_noise_cut = 500000 ;
 
 		std::map<int, LayerID> _mapping = {{}} ;
@@ -91,17 +91,17 @@ class TriventProc : public marlin::Processor
 
 		int _LayerCut = 5 ;
 		int _time2prev_event_cut = 0 ;
-		int _cerenkovTime;
+		int _cerenkovTime = 0 ;
 		float _beamEnergy = 0 ;
 		int trig_count = 0 ;
 		unsigned int _maxtime = 0 ;
-		int evtnum ;
-		int _rejectedNum ;
+		int evtnum  = 0 ;
+		int _rejectedNum  = 0 ;
 		uint _index[3] = {0,0,0} ;
 		std::set<int> zcut {} ;
 		LCWriter* _lcWriter = nullptr ;
-		int _bcid1;
-		int _bcid2;
+		int _bcid1 = 0 ;
+		int _bcid2 = 0 ;
 
 		std::string _outputFormat = "" ;
 

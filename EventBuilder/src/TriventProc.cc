@@ -56,11 +56,12 @@ TriventProc::TriventProc()
 							   "LCIO file" ,
 							   _outFileName ,
 							   _outFileName) ;
-	// Energy
+
 	registerProcessorParameter("beamEnergy" ,
 							   "The beam ",
 							   _beamEnergy ,
 							   0.0f) ;
+
 	registerProcessorParameter("cerenkovBif" ,
 							   "dif for cerenkov hits" ,
 							   _cerenkovBifForMarlin ,
@@ -188,7 +189,6 @@ void TriventProc::XMLReader(std::string xmlfile)
 								   << normal
 								   << std::endl;
 
-			std::vector<std::string> lines;
 			{
 				std::string value = pElem->GetText() ;
 				std::vector<std::string> lines;
@@ -196,7 +196,8 @@ void TriventProc::XMLReader(std::string xmlfile)
 				copy(istream_iterator<string>(iss),
 					 istream_iterator<string>(),
 					 back_inserter<vector<string> >(lines));
-				for(unsigned int iline = 0; iline < lines.size(); iline++){
+				for(unsigned int iline = 0; iline < lines.size(); iline++)
+				{
 					std::string line = lines.at(iline);
 					streamlog_out( MESSAGE ) << red << line << normal << std::endl;
 
@@ -228,7 +229,7 @@ void TriventProc::XMLReader(std::string xmlfile)
 									   << pElem->Attribute("name")
 									   << normal
 									   << std::endl;
-				std::vector<std::string> lines;
+
 				{
 					std::string value = pElem->GetText() ;
 					std::vector<std::string> lines;
@@ -257,7 +258,9 @@ void TriventProc::XMLReader(std::string xmlfile)
 				}
 			}
 		}
-	}else{
+	}
+	else
+	{
 		streamlog_out( WARNING ) << red << "Failed to load file : " << xmlfile.c_str() << normal <<std::endl;
 	}
 }
@@ -603,14 +606,11 @@ void TriventProc::processEvent( LCEvent* evtP )
 						LCEventImpl* evt = new LCEventImpl() ;     // create the event
 
 						//---------- set event paramters ------
-						const std::string parname_trigger = "trigger";
-						const std::string parname_energy  = "ParticleEnergy";
-						const std::string parname_bcid1 = "bcid1";
-						const std::string parname_bcid2 = "bcid2";
-						evt->parameters().setValue(parname_trigger,evtP->getEventNumber());
-						evt->parameters().setValue(parname_energy , _beamEnergy);
-						evt->parameters().setValue(parname_bcid1 , _bcid1);
-						evt->parameters().setValue(parname_bcid2 , _bcid2);
+						evt->parameters().setValue("trigger" , evtP->getEventNumber()) ;
+						if ( _beamEnergy > 0 )
+							evt->parameters().setValue("ParticleEnergy" , _beamEnergy) ;
+						evt->parameters().setValue("bcid1" , _bcid1) ;
+						evt->parameters().setValue("bcid2" , _bcid2) ;
 						evt->parameters().setValue("eventTimeInTrigger" , static_cast<int>(timeSpectrum.at(ibin)) ) ;
 						evt->setRunNumber( evtP->getRunNumber()) ;
 						//-------------------------------------
