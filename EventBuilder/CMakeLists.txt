@@ -12,7 +12,7 @@
 include_directories( ./include )
 
 
-FILE(GLOB_RECURSE headers "include/*.h")
+FILE(GLOB_RECURSE headers "include/*.h" "include/*.hpp")
 FILE(GLOB_RECURSE sources "src/*.cc")
 
 
