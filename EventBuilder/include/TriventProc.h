@@ -35,22 +35,24 @@ class TriventProc : public marlin::Processor
 		void init() ;
 
 
-		void    processEvent( LCEvent * evtP );
-		void    XMLReader(std::string xmlfile);
-		void    printDifGeom();
+		void processEvent( LCEvent * evtP );
 
-		uint    getCellDif_id(int cell_id);
-		uint    getCellAsic_id(int cell_id);
-		uint    getCellChan_id(int cell_id);
+		void processGeometry(std::string jsonFile) ;
 
-		void    getMaxTime();
+		void printDifGeom();
+
+		uint getCellDif_id(int cell_id) ;
+		uint getCellAsic_id(int cell_id) ;
+		uint getCellChan_id(int cell_id) ;
+
+		void getMaxTime();
 		void computeTimeSpectrum() ;
 		bool isLocalPeak(unsigned int bin) ;
-		uint*   getPadIndex(uint dif_id, uint asic_id, uint chan_id) ;
-		bool    eventBuilder(LCCollection* col_event, unsigned int time_peak, unsigned int prev_time_peak) ;
+		int* getPadIndex(uint dif_id, uint asic_id, uint chan_id) ;
+		bool eventBuilder(LCCollection* col_event, unsigned int time_peak, unsigned int prev_time_peak) ;
 		int	findTheBifSignal(unsigned int timeStamp) ;
 
-		void    end();
+		void end() ;
 
 		TriventProc(const TriventProc&) = delete ;
 		void operator=(const TriventProc&) = delete ;
@@ -67,14 +69,14 @@ class TriventProc : public marlin::Processor
 
 		std::string _colName = "" ;
 		std::string _fileName = "" ;
-		std::string _geomXML = "" ;
+
+		std::string geometryFile = "" ;
 
 		std::vector<std::string> _hcalCollections {} ;
 
-		unsigned int _eventNr = 0 ;
 		Int_t _elec_noise_cut = 500000 ;
 
-		std::map<int, LayerID> _mapping = {{}} ;
+		std::map<unsigned int, mapping::Dif> _mapping = {{}} ;
 
 		bool removeSquareEvents = true ;
 		bool removeRamFullEvents = true ;
@@ -91,13 +93,11 @@ class TriventProc : public marlin::Processor
 
 		int _LayerCut = 5 ;
 		int _time2prev_event_cut = 0 ;
-		int _cerenkovTime = 0 ;
 		float _beamEnergy = 0 ;
-		int trig_count = 0 ;
 		unsigned int _maxtime = 0 ;
 		int evtnum  = 0 ;
 		int _rejectedNum  = 0 ;
-		uint _index[3] = {0,0,0} ;
+		int _index[3] = {0,0,0} ;
 		std::set<int> zcut {} ;
 		LCWriter* _lcWriter = nullptr ;
 		int _bcid1 = 0 ;

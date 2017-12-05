@@ -42,7 +42,7 @@ def launch(a , files) :
 
   <processor name="MyTriventProc" type="TriventProc">
     <parameter name="HitCollectionName" type="StringVec"> DHCALRawHits </parameter>
-    <parameter name="setup_geometry" type="string">''' + a.geometry + '''</parameter>
+    <parameter name="geometry" type="string">''' + a.geometry + '''</parameter>
     <parameter name="beamEnergy" type="double">''' + str(a.energy) + '''</parameter>
 	<parameter name="electronic_noise_cut" type="int"> 500000 </parameter>
     <parameter name="cerenkovDelay" type="int">''' + str(a.cerenkovDelay) + '''</parameter>

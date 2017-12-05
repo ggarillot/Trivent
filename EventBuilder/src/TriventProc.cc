@@ -25,13 +25,15 @@
 #include <algorithm>
 #include <lcio.h>
 #include "marlin/VerbosityLevels.h"
-#include "marlin/tinyxml.h"
 
+#include "json.hpp"
+
+#include <cassert>
 #include <limits>
 #include <algorithm>
 #include <exception>
 
-TriventProc a_TriventProc_instance ;
+TriventProc aTriventProc ;
 
 //=========================================================
 TriventProc::TriventProc()
@@ -111,10 +113,10 @@ TriventProc::TriventProc()
 	_timeWin = static_cast<unsigned int>(_timeWinForMarlin) ;
 
 
-	//maping on XML file
-	registerProcessorParameter("setup_geometry" ,
-							   "Dif geometry and position on the detector XML" ,
-							   _geomXML ,
+	//maping on JSON file
+	registerProcessorParameter("geometry" ,
+							   "JSON geometry" ,
+							   geometryFile ,
 							   std::string("") ) ;
 
 
@@ -141,164 +143,101 @@ void TriventProc::init()
 {
 	printParameters() ;
 
-	if ( _geomXML == std::string("") )
-		throw std::invalid_argument("wtf put a geometry plz") ;
-
-	trig_count = 0 ;
+	assert ( geometryFile != std::string("") ) ;
 
 	_lcWriter = LCFactory::getInstance()->createLCWriter() ;
 	_lcWriter->setCompressionLevel( 0 ) ;
 	_lcWriter->open(_outFileName.c_str(),LCIO::WRITE_NEW) ;
 
-	XMLReader(_geomXML.c_str()) ;
+	processGeometry(geometryFile) ;
 	printDifGeom() ;
-	evtnum=0;// event number
-
+	evtnum = 0 ;
 }
 
-//===============================================
-void TriventProc::XMLReader(std::string xmlfile)
+void TriventProc::processGeometry(std::string jsonFile)
 {
-	TiXmlDocument doc(xmlfile.c_str());
-	bool load_key = doc.LoadFile();
-	if(load_key){
-		streamlog_out( MESSAGE ) << green << "File : " << xmlfile.c_str() << normal <<std::endl;
-		// tout ici
-		TiXmlHandle hDoc(&doc);
-		TiXmlElement* pElem;
-		TiXmlHandle hRoot(0);
-		// name block
-		{
-			pElem=hDoc.FirstChildElement().Element();
-			// should always have a valid root but handle gracefully if it does
-			if (!pElem) streamlog_out( WARNING ) << red << "error elem" << normal << std::endl;
-			streamlog_out( MESSAGE ) << green << pElem->Value() << normal << std::endl;
+	_mapping.clear() ;
 
-			// save this for later
-			hRoot=TiXmlHandle(pElem);
-		}
-		// parameters block
-		{
-			m_parameters.clear();
-			pElem=hRoot.FirstChild("parameter").Element();
-			std::string key = pElem->Attribute("name");
-			streamlog_out( MESSAGE ) << green << key.c_str() << normal << std::endl;
-			streamlog_out( DEBUG1 ) << green
-									<<"parameter : "
-								   << pElem->Attribute("name")
-								   << normal
-								   << std::endl;
+	std::ifstream file(jsonFile) ;
+	auto json = nlohmann::json::parse(file) ;
 
-			{
-				std::string value = pElem->GetText() ;
-				std::vector<std::string> lines;
-				istringstream iss(value);
-				copy(istream_iterator<string>(iss),
-					 istream_iterator<string>(),
-					 back_inserter<vector<string> >(lines));
-				for(unsigned int iline = 0; iline < lines.size(); iline++)
-				{
-					std::string line = lines.at(iline);
-					streamlog_out( MESSAGE ) << red << line << normal << std::endl;
+	auto chambersList = json.at("chambers") ;
 
-					stringstream ss( line.c_str() );
-					vector<string> result;
-
-					LayerID mapp;
-					int Dif_id;
-					while( ss.good() )
-					{
-						string substr;
-						getline( ss, substr, ',' );
-						result.push_back( substr );
-					}
-					istringstream ( result.at(0) ) >> Dif_id;
-					istringstream ( result.at(1) ) >> mapp.K;
-					istringstream ( result.at(2) ) >> mapp.DifX;
-					istringstream ( result.at(3) ) >> mapp.DifY;
-					istringstream ( result.at(4) ) >> mapp.IncX;
-					istringstream ( result.at(5) ) >> mapp.IncY;
-					_mapping[Dif_id] = mapp;
-				}
-			}
-			pElem = pElem->NextSiblingElement();
-			// ChamberGeom  Node.
-			{
-				streamlog_out( DEBUG1 ) << green
-										<<"parameter : "
-									   << pElem->Attribute("name")
-									   << normal
-									   << std::endl;
-
-				{
-					std::string value = pElem->GetText() ;
-					std::vector<std::string> lines;
-					istringstream iss(value);
-					copy(istream_iterator<string>(iss),
-						 istream_iterator<string>(),
-						 back_inserter<vector<string> >(lines));
-					for(unsigned int iline = 0; iline < lines.size(); iline++){
-						std::string line = lines.at(iline);
-						streamlog_out( MESSAGE ) << red << line << normal << std::endl;
-
-						stringstream ss( line.c_str() );
-						vector<string> result;
-
-						double position;
-						int Dif_id;
-						while( ss.good() )
-						{
-							string substr;
-							getline( ss, substr, ',' );
-							result.push_back( substr );
-						}
-						istringstream ( result.at(0) ) >> Dif_id;
-						istringstream ( result.at(3) ) >> position;
-					}
-				}
-			}
-		}
-	}
-	else
+	for ( const auto& i : chambersList )
 	{
-		streamlog_out( WARNING ) << red << "Failed to load file : " << xmlfile.c_str() << normal <<std::endl;
+		int slot = i.at("slot") ;
+		unsigned int difID = i.at("left") ;
+
+		mapping::Dif temp{ slot , 0 } ;
+
+		//insert the new dif and check if it already exists elsewhere
+		auto it = _mapping.insert( { difID , temp } ) ;
+		if ( !it.second )
+		{
+			std::cout << "ERROR in geometry : dif " << difID << " of layer " << slot << " already exists" << std::endl ;
+			std::terminate() ;
+		}
+
+		difID = i.at("center") ;
+		temp.shiftY = 32 ;
+
+		it = _mapping.insert( { difID , temp } ) ;
+		if ( !it.second )
+		{
+			std::cout << "ERROR in geometry : dif " << difID << " of layer " << slot << " already exists" << std::endl ;
+			std::terminate() ;
+		}
+
+		difID = i.at("right") ;
+		temp.shiftY = 64 ;
+
+		it = _mapping.insert( { difID , temp } ) ;
+		if ( !it.second )
+		{
+			std::cout << "ERROR in geometry : dif " << difID << " of layer " << slot << " already exists" << std::endl ;
+			std::terminate() ;
+		}
 	}
+
+	file.close() ;
 }
+
 
 void TriventProc::printDifGeom()
 {
-
-	for(std::map<int,LayerID>::iterator itt = _mapping.begin();itt!=_mapping.end();itt++)
+	for ( const auto& it : _mapping )
 	{
-		streamlog_out( MESSAGE ) << itt->first << "\t" << itt->second.K
-								 <<"\t"<<itt->second.DifX
-								<<"\t"<<itt->second.DifY
-							   <<"\t"<<itt->second.IncX
-							  <<"\t"<<itt->second.IncY
-							 << std::endl;
+		streamlog_out( MESSAGE ) << "Dif " << it.first << "\t: "
+								 << "Layer " << it.second.K << "\t"
+								 << "Shift " << it.second.shiftY << std::endl ;
 	}
 }
 
 // ============ decode the cell ids =============
-uint TriventProc::getCellDif_id(int cell_id){
+uint TriventProc::getCellDif_id(int cell_id)
+{
 	return cell_id & 0xFF;
 }
-uint TriventProc::getCellAsic_id(int cell_id){
+uint TriventProc::getCellAsic_id(int cell_id)
+{
 	return (cell_id & 0xFF00)>>8;
 }
-uint TriventProc::getCellChan_id(int cell_id){
+uint TriventProc::getCellChan_id(int cell_id)
+{
 	return (cell_id & 0x3F0000)>>16;
 }
 
-uint* TriventProc::getPadIndex(uint dif_id, uint asic_id, uint chan_id)
+int* TriventProc::getPadIndex(uint dif_id, uint asic_id, uint chan_id)
 {
-	_index[0]=_index[1]=_index[2]=0;
-	double DifY = -1.,DifZ = -1.;
-	DifZ = _mapping.find(dif_id)->second.K;
-	DifY = _mapping.find(dif_id)->second.DifY;
-	_index[0] = (1+MapILargeHR2[chan_id]+AsicShiftI[asic_id]);
-	_index[1] = (32-(MapJLargeHR2[chan_id]+AsicShiftJ[asic_id]))+int(DifY);
-	_index[2] = abs(int(DifZ));
+	_index[0] = _index[1] = _index[2] = 0 ;
+
+	const auto it = _mapping.find(dif_id) ;
+	int DifZ = it->second.K ;
+	int DifY = it->second.shiftY ;
+
+	_index[0] = ( 1 + mapping::MapILargeHR2[chan_id] + mapping::AsicShiftI[asic_id] ) ;
+	_index[1] = ( 32 - (mapping::MapJLargeHR2[chan_id] + mapping::AsicShiftJ[asic_id]) ) + DifY ;
+	_index[2] = DifZ ;
 	streamlog_out( DEBUG0 ) << " Dif_id == " << dif_id
 							<< " Asic_id ==" << asic_id
 							<< " Chan_id ==" << chan_id
@@ -306,7 +245,7 @@ uint* TriventProc::getPadIndex(uint dif_id, uint asic_id, uint chan_id)
 							<< " J == " << _index[1]
 							<< " K == " << _index[2]
 							<< std::endl;
-	return _index;
+	return _index ;
 }
 //===============================================
 void TriventProc::getMaxTime()
@@ -341,7 +280,6 @@ bool TriventProc::isLocalPeak(unsigned int bin)
 	return true ;
 }
 
-int IJKToKey(const int i,const int j,const int k){return 100*100*k+100*j+i;}
 int findAsicKey(int i,int j,int k)
 {
 	if(i>96||i<0||j>96||j<0) return -1;
@@ -354,12 +292,17 @@ int findAsicKey(int i,int j,int k)
 bool TriventProc::eventBuilder(LCCollection* col_event , unsigned int time_peak , unsigned int prev_time_peak)
 {
 	zcut.clear() ;
-	col_event->setFlag(col_event->getFlag()|( 1 << LCIO::RCHBIT_LONG));
-	col_event->setFlag(col_event->getFlag()|( 1 << LCIO::RCHBIT_TIME));
-	CellIDEncoder<CalorimeterHitImpl> cd( _outputFormat.c_str() ,col_event) ;
-	std::map<int,int> asicMap;
 
-	std::map<int , unsigned int> ramFullDetectorMap ;
+	LCFlagImpl flag ;
+	flag.setBit(LCIO::CHBIT_LONG) ;
+	flag.setBit(LCIO::RCHBIT_TIME) ;
+
+	col_event->setFlag( flag.getFlag() ) ;
+
+	CellIDEncoder<CalorimeterHitImpl> cd( _outputFormat.c_str() , col_event) ;
+
+	std::map<int,int> asicMap ;
+	std::map<unsigned int , unsigned int> ramFullDetectorMap ;
 
 	try
 	{
@@ -377,13 +320,13 @@ bool TriventProc::eventBuilder(LCCollection* col_event , unsigned int time_peak 
 
 			for ( const auto& rawhit : triggerHitMap.at(i) )
 			{
-				int Dif_id  =  getCellDif_id ( rawhit->getCellID0() ) ;
-				int Asic_id =  getCellAsic_id( rawhit->getCellID0() ) ;
-				int Chan_id =  getCellChan_id( rawhit->getCellID0() ) ;
+				uint Dif_id  = getCellDif_id ( rawhit->getCellID0() ) ;
+				uint Asic_id = getCellAsic_id( rawhit->getCellID0() ) ;
+				uint Chan_id = getCellChan_id( rawhit->getCellID0() ) ;
 
 				if ( _mapping.find(Dif_id) == _mapping.end() )
 				{
-					//std::cout << "wtf dif : " << Dif_id << std::endl ;
+					streamlog_out( DEBUG ) << "wtf dif : " << Dif_id << std::endl ;
 					continue ;
 				}
 
@@ -392,7 +335,7 @@ bool TriventProc::eventBuilder(LCCollection* col_event , unsigned int time_peak 
 
 				if ( removeRamFullEvents && ramFullDetectorMap[Dif_id] > 70 )
 				{
-					//					std::cout << "Reject ramFull event of dif : " << Dif_id << std::endl ;
+					streamlog_out( DEBUG ) << "Reject ramFull event of dif : " << Dif_id << std::endl ;
 					return false ;
 				}
 
@@ -400,80 +343,85 @@ bool TriventProc::eventBuilder(LCCollection* col_event , unsigned int time_peak 
 				int J = getPadIndex(Dif_id, Asic_id, Chan_id)[1];
 				int K = getPadIndex(Dif_id, Asic_id, Chan_id)[2];
 
-				//find ans remove square events
-				int asickey = findAsicKey(I,J,K);
-				if(asicMap[asickey])
-					asicMap[asickey]++;
-				else
-					asicMap[asickey]=1;
+				//find and remove square events
+				int asickey = findAsicKey(I,J,K) ;
+				asicMap[asickey] ++ ;
+
 				if( removeSquareEvents && asicMap[asickey] == 64 )
 				{
-					zcut.clear();
-					hitKeys.clear();
-					asicMap.clear();
-					//					std::cout << "fullAsic of asicKey : " << asickey << std::endl ;
+					zcut.clear() ;
+					hitKeys.clear() ;
+					asicMap.clear() ;
+					streamlog_out( DEBUG ) << "fullAsic of asicKey : " << asickey << std::endl ;
 					return false ;
 				}
 
-				int aHitKey = IJKToKey(I,J,K) ;
 
 				float pos[3] ;
 				pos[0] = I*10.408f ;
 				pos[1] = J*10.408f ;
-				pos[2] = K*26.131f ;
+				pos[2] = (K+1)*26.131f ;
 
 				CalorimeterHitImpl* caloHit = new CalorimeterHitImpl();
-				caloHit->setTime( float(rawhit->getTimeStamp()) ) ; // done !!
+				caloHit->setTime( rawhit->getTimeStamp() ) ;
 
-				if(float(rawhit->getAmplitude()&3)>2.5)
-					caloHit->setEnergy(float(rawhit->getAmplitude()&3));
-				else if(float(rawhit->getAmplitude()&3)>1.5)
-					caloHit->setEnergy(float(rawhit->getAmplitude()&3)-1);
+				//fix bug threshold 2 <-> 1
+				if ( rawhit->getAmplitude() > 2.5 )
+					caloHit->setEnergy(3.f) ;
+				else if ( rawhit->getAmplitude() > 1.5 )
+					caloHit->setEnergy(1.f) ;
 				else
-					caloHit->setEnergy(float(rawhit->getAmplitude()&3)+1);
+					caloHit->setEnergy(2.f) ;
+
 
 				//avoid two hit in the same cell
-				if(std::find(hitKeys.begin(),hitKeys.end(),aHitKey)!=hitKeys.end())
+				const auto it = std::find( hitKeys.begin() , hitKeys.end() , rawhit->getCellID0() ) ;
+				if ( it != hitKeys.end() )
 				{
-					IMPL::CalorimeterHitImpl* hit = dynamic_cast<IMPL::CalorimeterHitImpl*>(col_event->getElementAt(std::distance(hitKeys.begin(),std::find(hitKeys.begin(),hitKeys.end(),aHitKey))));
-					float hitTime=hit->getTime();
-					if( std::abs(time_peak-hitTime) > std::abs(time_peak-i) )
-						hit->setEnergy(caloHit->getEnergy());
+					streamlog_out( DEBUG ) << red << "hit " <<  rawhit->getCellID0() << " already exists" << normal << std::endl ;
+					IMPL::CalorimeterHitImpl* hit = dynamic_cast<IMPL::CalorimeterHitImpl*>( col_event->getElementAt( std::distance(hitKeys.begin() , it) ) ) ;
+					float hitTime = hit->getTime() ;
+					if( std::abs(time_peak - hitTime) > std::abs(static_cast<int>(time_peak - i)) )
+						hit->setEnergy( caloHit->getEnergy() ) ;
 
 					continue ;
 				}
+
 				// set the cell id
-				if( _outputFormat==std::string("M:3,S-1:3,I:9,J:9,K-1:6") ){
-					cd["I"] = I ;
-					cd["J"] = J ;
-					cd["K-1"] = K-1 ;
+				cd["I"] = I ;
+				cd["J"] = J ;
+				cd["K-1"] = K ;
+
+				if( _outputFormat == std::string("M:3,S-1:3,I:9,J:9,K-1:6") )
+				{
 					cd["M"] = 0 ;
 					cd["S-1"] = 3 ;
 				}
-				else if( _outputFormat==std::string("I:9,J:9,K-1:6,Dif_id:8,Asic_id:6,Chan_id:7") ){
-					cd["I"] = I ;
-					cd["J"] = J ;
-					cd["K-1"] = K-1 ;
+				else if( _outputFormat == std::string("I:9,J:9,K-1:6,Dif_id:8,Asic_id:6,Chan_id:7") )
+				{
 					cd["Dif_id"] = Dif_id ;
 					cd["Asic_id"] = Asic_id ;
 					cd["Chan_id"] = Chan_id ;
 				}
-				else{
-					streamlog_out( ERROR ) << "WRONG OUTPUT DATA FORMAT -> THROW" << std::endl;
-					throw;
+				else
+				{
+					streamlog_out( ERROR ) << "WRONG OUTPUT DATA FORMAT -> THROW" << std::endl ;
+					throw ;
 				}
 				streamlog_out( DEBUG0 ) << " I == " << I
 										<< " J == " << J
 										<< " K == " << K
-										<< std::endl;
+										<< std::endl ;
+
 				cd.setCellID( caloHit ) ;
 				zcut.insert(K) ;
 
 				caloHit->setPosition(pos);
 				col_event->addElement(caloHit);
-				hitKeys.push_back(aHitKey);
 
-			}//loop over the hit
+				hitKeys.push_back( rawhit->getCellID0() ) ;
+
+			}//loop over the hits
 		}
 		hitKeys.clear() ;
 	}
@@ -513,9 +461,8 @@ int TriventProc::findTheBifSignal(unsigned int timeStamp)
 		{
 			//						std::cout << "Dif " << getCellDif_id( jt->getCellID0() )
 			//								  << " , Asic " << getCellAsic_id( jt->getCellID0() )
-			//								  << " , Pad " << getCellChan_id( jt->getCellID0())
+			//								  << " , Pad " << getCellChan_id( jt->getCellID0() )
 			//								  << " , Thr " << jt->getAmplitude() << std::endl ;
-			_cerenkovTime = it->first - timeStamp ;
 			return jt->getAmplitude() ;
 		}
 	}
@@ -530,23 +477,22 @@ void TriventProc::processEvent( LCEvent* evtP )
 	{
 		try
 		{
-			_eventNr = evtP->getEventNumber() ;
-			for(unsigned int i=0; i< _hcalCollections.size(); i++)
+			for ( unsigned int i = 0 ; i< _hcalCollections.size() ; i++)
 			{//!loop over collection
 
 				unsigned int currentTriggerNEvents = 0 ;
 				try
 				{
 					LCCollection* col = nullptr ;
-					col = evtP ->getCollection(_hcalCollections[i].c_str()) ;
+					col = evtP->getCollection(_hcalCollections[i].c_str()) ;
 					int numElements = col->getNumberOfElements() ;// hit number
 
 
-					streamlog_out( MESSAGE ) << yellow << "Trigger number == " << trig_count++ << normal << std::endl;
+					streamlog_out( MESSAGE ) << yellow << "Trigger number == " << evtP->getEventNumber() << normal << std::endl;
 
 					if( col == nullptr )
 					{
-						streamlog_out( WARNING )<< red << "TRIGGER SKIPED ..."<< normal <<std::endl;
+						streamlog_out( WARNING ) << red << "TRIGGER SKIPED ..."<< normal <<std::endl;
 						break;
 					}
 
@@ -594,7 +540,7 @@ void TriventProc::processEvent( LCEvent* evtP )
 					unsigned int ibin = 0 ;
 					int bin_c_prev = -2 * _timeWin ; //  the previous bin center
 
-					int time_prev = 0;
+					int time_prev = 0 ;
 					while( ibin < (_maxtime - 2) )
 					{
 						if( timeSpectrum.at(ibin) <= _noiseCut || !isLocalPeak(ibin) )
@@ -602,6 +548,8 @@ void TriventProc::processEvent( LCEvent* evtP )
 							ibin++ ;
 							continue ;
 						}
+
+						streamlog_out( DEBUG ) << green << ibin << normal << std::endl ;
 
 						LCEventImpl* evt = new LCEventImpl() ;     // create the event
 
@@ -611,8 +559,8 @@ void TriventProc::processEvent( LCEvent* evtP )
 							evt->parameters().setValue("ParticleEnergy" , _beamEnergy) ;
 						evt->parameters().setValue("bcid1" , _bcid1) ;
 						evt->parameters().setValue("bcid2" , _bcid2) ;
-						evt->parameters().setValue("eventTimeInTrigger" , static_cast<int>(timeSpectrum.at(ibin)) ) ;
-						evt->setRunNumber( evtP->getRunNumber()) ;
+						evt->parameters().setValue("eventTimeInTrigger" , static_cast<int>(ibin)) ;
+						evt->setRunNumber( evtP->getRunNumber() ) ;
 						//-------------------------------------
 
 						LCCollectionVec* outcol = new LCCollectionVec(LCIO::CALORIMETERHIT) ;
@@ -693,7 +641,6 @@ void TriventProc::end()
 	streamlog_out( MESSAGE )<< "Trivent Selected "<< evtnum <<" events"<<std::endl;
 	streamlog_out( MESSAGE )<< "Trivent Rejected "<< _rejectedNum <<" events"<<std::endl;
 	streamlog_out( MESSAGE )<< "Trivent end"<<std::endl;
-	//cc.StoreHistos("test.root");
 	_lcWriter->close() ;
 }
 //==============================================================
