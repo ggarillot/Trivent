@@ -432,6 +432,7 @@ bool TriventProc::eventBuilder(LCCollection* col_event , unsigned int time_peak 
 	catch(const std::out_of_range& e)
 	{
 		std::cout << e.what() << std::endl ;
+		std::cout << "In TriventProc::eventBuilder" << std::endl ;
 	}
 
 	return true ;
@@ -625,7 +626,11 @@ void TriventProc::processEvent( LCEvent* evtP )
 
 				}
 				catch (lcio::DataNotAvailableException zero) {}
-				catch ( std::out_of_range& e) { std::cout << e.what() << std::endl ; }
+				catch ( std::out_of_range& e)
+				{
+					std::cout << e.what() << std::endl ;
+					std::cout << "In TriventProc::processEvent" << std::endl ;
+				}
 
 				std::cout << "nEvents : " << currentTriggerNEvents << std::endl ;
 			}
