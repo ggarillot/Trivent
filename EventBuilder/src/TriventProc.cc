@@ -366,9 +366,9 @@ bool TriventProc::eventBuilder(LCCollection* col_event , unsigned int time_peak 
 				caloHit->setTime( rawhit->getTimeStamp() ) ;
 
 				//fix bug threshold 2 <-> 1
-				if ( rawhit->getAmplitude() > 2.5 )
+				if ( (rawhit->getAmplitude()&3) > 2.5f )
 					caloHit->setEnergy(3.f) ;
-				else if ( rawhit->getAmplitude() > 1.5 )
+				else if ( (rawhit->getAmplitude()&3) > 1.5f )
 					caloHit->setEnergy(1.f) ;
 				else
 					caloHit->setEnergy(2.f) ;
