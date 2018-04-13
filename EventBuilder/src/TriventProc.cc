@@ -69,7 +69,7 @@ TriventProc::TriventProc()
 							   _cerenkovBifForMarlin ,
 							   3) ;
 
-	cerenkovBif = static_cast<unsigned int>(_cerenkovBifForMarlin) ;
+
 
 	registerProcessorParameter("cerenkovDelay" ,
 							   "cerenkovDelay",
@@ -102,7 +102,7 @@ TriventProc::TriventProc()
 							   _noiseCutForMarlin ,
 							   10) ;
 
-	_noiseCut = static_cast<unsigned int>(_noiseCutForMarlin) ;
+
 
 	// time windows
 	registerProcessorParameter("timeWin" ,
@@ -110,7 +110,7 @@ TriventProc::TriventProc()
 							   _timeWinForMarlin ,
 							   2) ;
 
-	_timeWin = static_cast<unsigned int>(_timeWinForMarlin) ;
+
 
 
 	//maping on JSON file
@@ -152,6 +152,10 @@ void TriventProc::init()
 	processGeometry(geometryFile) ;
 	printDifGeom() ;
 	evtnum = 0 ;
+
+	cerenkovBif = static_cast<unsigned int>(_cerenkovBifForMarlin) ;
+	_noiseCut = static_cast<unsigned int>(_noiseCutForMarlin) ;
+	_timeWin = static_cast<unsigned int>(_timeWinForMarlin) ;
 }
 
 void TriventProc::processGeometry(std::string jsonFile)
