@@ -156,6 +156,12 @@ void TriventProc::init()
 	cerenkovBif = static_cast<unsigned int>(_cerenkovBifForMarlin) ;
 	_noiseCut = static_cast<unsigned int>(_noiseCutForMarlin) ;
 	_timeWin = static_cast<unsigned int>(_timeWinForMarlin) ;
+
+	rootFile = new TFile("raw.root" , "RECREATE") ;
+	tree = new TTree("tree" , "tree") ;
+
+	tree->Branch("nHit" , &nHit) ;
+	tree->Branch("clock" , &clock) ;
 }
 
 void TriventProc::processGeometry(std::string jsonFile)
@@ -446,8 +452,8 @@ int TriventProc::findTheBifSignal(unsigned int timeStamp)
 {
 	std::map<unsigned int , std::vector<EVENT::RawCalorimeterHit*>>::iterator it = triggerHitMap.end() ;
 
-	int min = std::max( static_cast<int>(timeStamp) - cerenkovDelay - 1 , 0 ) ;
-	int max = std::max( static_cast<int>(timeStamp) - cerenkovDelay + 1 , 0 ) ;
+	int min = std::max( static_cast<int>(timeStamp) - cerenkovDelay - 2 , 0 ) ;
+	int max = std::max( static_cast<int>(timeStamp) - cerenkovDelay + 2 , 0 ) ;
 
 	for ( unsigned int i = static_cast<unsigned int>(min) ; i <= static_cast<unsigned int>(max) ; ++i )
 	{
@@ -478,6 +484,11 @@ int TriventProc::findTheBifSignal(unsigned int timeStamp)
 //==================================================================================
 void TriventProc::processEvent( LCEvent* evtP )
 {
+	if ( isFirstEvent )
+	{
+		assert( evtP->getEventNumber() == 1 ) ;
+		isFirstEvent = false ;
+	}
 	if (evtP != nullptr)
 	{
 		try
@@ -493,7 +504,7 @@ void TriventProc::processEvent( LCEvent* evtP )
 					int numElements = col->getNumberOfElements() ;// hit number
 
 
-					streamlog_out( MESSAGE ) << yellow << "Trigger number == " << evtP->getEventNumber() << normal << std::endl;
+					streamlog_out( MESSAGE ) << yellow << "Trigger number == " << evtP->getEventNumber() << normal ;
 
 					if( col == nullptr )
 					{
@@ -517,6 +528,7 @@ void TriventProc::processEvent( LCEvent* evtP )
 						{
 							if (raw_hit->getTimeStamp() < 0 )
 								continue ;
+							nHit++ ;
 							triggerHitMap[static_cast<unsigned int>(raw_hit->getTimeStamp())].push_back(raw_hit) ;
 							//extract abolute bcid information:
 							if(ihit==0)
@@ -539,8 +551,28 @@ void TriventProc::processEvent( LCEvent* evtP )
 						}
 					}
 
+					triggerBeginTime =_bcid1*16777216ULL + _bcid2 ;
+					if ( timeOfFirstTrigger == 0 )
+						timeOfFirstTrigger = triggerBeginTime ;
+
+					triggerBeginTime -= timeOfFirstTrigger ;
+
 					getMaxTime() ;
 					computeTimeSpectrum() ;
+
+					if ( evtP->getEventNumber() == 25 )
+					{
+						for ( unsigned int c = 0 ; c < timeSpectrum.size() ; ++c )
+						{
+							nHit = timeSpectrum.at(c) ;
+							clock = c ;
+							tree->Fill() ;
+
+						}
+
+					}
+
+					std::cout << red << "  " << triggerHitMap.rbegin()->first * 200e-9*1000 << " ms" << normal << std::endl ;
 
 					unsigned int ibin = 0 ;
 					int bin_c_prev = -2 * _timeWin ; //  the previous bin center
@@ -636,7 +668,7 @@ void TriventProc::processEvent( LCEvent* evtP )
 					std::cout << "In TriventProc::processEvent" << std::endl ;
 				}
 
-				std::cout << "nEvents : " << currentTriggerNEvents << std::endl ;
+				std::cout << magenta << "nEvents : " << currentTriggerNEvents << normal << std::endl ;
 			}
 		}
 		catch (lcio::DataNotAvailableException err) {}
@@ -650,6 +682,10 @@ void TriventProc::end()
 	streamlog_out( MESSAGE )<< "Trivent Selected "<< evtnum <<" events"<<std::endl;
 	streamlog_out( MESSAGE )<< "Trivent Rejected "<< _rejectedNum <<" events"<<std::endl;
 	streamlog_out( MESSAGE )<< "Trivent end"<<std::endl;
+
+	rootFile->cd() ;
+	tree->Write() ;
+	rootFile->Close() ;
 	_lcWriter->close() ;
 }
 //==============================================================

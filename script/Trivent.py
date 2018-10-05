@@ -15,6 +15,7 @@ class Params :
 		self.removeRamFullEvents = True
 		self.geometry = ""
 		self.outputFileName = "TDHCAL.slcio"
+		self.maxRecordNumber = 0
 
 
 def launch(a , files) :
@@ -36,6 +37,7 @@ def launch(a , files) :
 
   <global>
     <parameter name="LCIOInputFiles">''' + fileList + '''</parameter>
+  <parameter name="MaxRecordNumber" value="''' + str(a.maxRecordNumber) + '''"/>    
     <parameter name="Verbosity" type="string"> MESSAGE </parameter>
     <parameter name="SupressCheck" value="false"/>
   </global>

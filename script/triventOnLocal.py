@@ -19,8 +19,9 @@ if __name__ == '__main__' :
 
 	#dir = '/home/garillot/files/DATA/STREAMOUT/SPS_Nov2012'
 	#dir = '/home/garillot/files/DATA/STREAMOUT/SPS_Apr2015'
+	#dir = '/home/garillot/files/DATA/STREAMOUT/H2_Sept2017'	
 	dir = '/home/garillot/files/DATA/STREAMOUT/SPS_Sept2018'
-	
+
 	print ('Searching files in ' + dir)
 
 	#list files
@@ -30,6 +31,7 @@ if __name__ == '__main__' :
 		if runNumber in fileName :
 			fileList.append(dir + '/' + fileName)
 
+	fileList.sort()
 	print 'File List :'
 	print fileList
 

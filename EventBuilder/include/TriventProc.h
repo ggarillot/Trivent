@@ -59,6 +59,19 @@ class TriventProc : public marlin::Processor
 
 
 	protected :
+
+		TFile* rootFile = nullptr ;
+		TTree* tree = nullptr ;
+
+		int nHit = 0 ;
+		unsigned int clock = 0 ;
+		unsigned long long triggerBeginTime = 0 ;
+		unsigned long long timeInTrigger = 0 ;
+
+		unsigned long long timeOfFirstTrigger = 0 ;
+
+		bool isFirstEvent = true ;
+		//		double acquisitionTime = 0 ;
 		// xml test
 		std::map<std::string,std::string> m_parameters {{}} ;
 
