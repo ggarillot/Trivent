@@ -486,8 +486,13 @@ void TriventProc::processEvent( LCEvent* evtP )
 {
 	if ( isFirstEvent )
 	{
-		assert( evtP->getEventNumber() == 1 ) ;
-		isFirstEvent = false ;
+		if ( evtP->getEventNumber() == 0 )
+			isFirstEvent = false ;
+		else
+		{
+			assert( evtP->getEventNumber() == 1 ) ;
+			isFirstEvent = false ;
+		}
 	}
 	if (evtP != nullptr)
 	{
