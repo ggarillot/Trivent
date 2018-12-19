@@ -48,7 +48,10 @@
 		{"slot":44 , "left":54  , "center":53  , "right":59  },
 		{"slot":45 , "left":27  , "center":90  , "right":96  },
 		{"slot":46 , "left":5   , "center":8   , "right":95  },
-		{"slot":47 , "left":63  , "center":87  , "right":18  },
+		{"slot":47 , "left":63  , "center":87  , "right":18  }
+	],
+	"other" :
+	[
 		{"slot":48 , "left":68  , "center":69  , "right":66  }
 	]
 }

@@ -28,6 +28,7 @@
 
 #include "json.hpp"
 
+#include <sstream>
 #include <cassert>
 #include <limits>
 #include <algorithm>
@@ -40,7 +41,7 @@ TriventProc::TriventProc()
 	: Processor("TriventProc")
 {
 
-	streamlog_out( MESSAGE )<< "Trivent ... begin " << endl;
+	streamlog_out( MESSAGE )<< "Trivent ... begin " << std::endl ;
 	_rejectedNum = 0;
 
 	// collection
@@ -53,11 +54,15 @@ TriventProc::TriventProc()
 							  hcalCollections         ) ;
 
 	// Option of output file with clean events
-	_outFileName="LCIO_clean_run.slcio";
 	registerProcessorParameter("LCIOOutputFile" ,
 							   "LCIO file" ,
 							   _outFileName ,
-							   _outFileName) ;
+							   std::string("TDHCAL.slcio") ) ;
+
+	registerProcessorParameter("RootNoiseFileName" ,
+							   "LCIO file" ,
+							   rootFileName ,
+							   std::string("noise.root") ) ;
 
 	registerProcessorParameter("beamEnergy" ,
 							   "The beam ",
@@ -149,115 +154,26 @@ void TriventProc::init()
 	_lcWriter->setCompressionLevel( 0 ) ;
 	_lcWriter->open(_outFileName.c_str(),LCIO::WRITE_NEW) ;
 
-	processGeometry(geometryFile) ;
-	printDifGeom() ;
+	mapping = mapping::Mapping(geometryFile) ;
+	mapping.print() ;
+
 	evtnum = 0 ;
 
 	cerenkovBif = static_cast<unsigned int>(_cerenkovBifForMarlin) ;
 	_noiseCut = static_cast<unsigned int>(_noiseCutForMarlin) ;
 	_timeWin = static_cast<unsigned int>(_timeWinForMarlin) ;
 
-	rootFile = new TFile("raw.root" , "RECREATE") ;
+
+	rootFile = new TFile(rootFileName.c_str() , "RECREATE") ;
 	tree = new TTree("tree" , "tree") ;
 
 	tree->Branch("nHit" , &nHit) ;
 	tree->Branch("clock" , &clock) ;
-}
-
-void TriventProc::processGeometry(std::string jsonFile)
-{
-	_mapping.clear() ;
-
-	std::ifstream file(jsonFile) ;
-	auto json = nlohmann::json::parse(file) ;
-
-	auto chambersList = json.at("chambers") ;
-
-	for ( const auto& i : chambersList )
-	{
-		int slot = i.at("slot") ;
-		unsigned int difID = i.at("left") ;
-
-		mapping::Dif temp{ slot , 0 } ;
-
-		//insert the new dif and check if it already exists elsewhere
-		auto it = _mapping.insert( { difID , temp } ) ;
-		if ( !it.second )
-		{
-			std::cout << "ERROR in geometry : dif " << difID << " of layer " << slot << " already exists" << std::endl ;
-			std::terminate() ;
-		}
-
-		difID = i.at("center") ;
-		temp.shiftY = 32 ;
-
-		it = _mapping.insert( { difID , temp } ) ;
-		if ( !it.second )
-		{
-			std::cout << "ERROR in geometry : dif " << difID << " of layer " << slot << " already exists" << std::endl ;
-			std::terminate() ;
-		}
-
-		difID = i.at("right") ;
-		temp.shiftY = 64 ;
-
-		it = _mapping.insert( { difID , temp } ) ;
-		if ( !it.second )
-		{
-			std::cout << "ERROR in geometry : dif " << difID << " of layer " << slot << " already exists" << std::endl ;
-			std::terminate() ;
-		}
-	}
-
-	file.close() ;
+	tree->Branch("trigger" , &trigger) ;
 }
 
 
-void TriventProc::printDifGeom()
-{
-	for ( const auto& it : _mapping )
-	{
-		streamlog_out( MESSAGE ) << "Dif " << it.first << "\t: "
-								 << "Layer " << it.second.K << "\t"
-								 << "Shift " << it.second.shiftY << std::endl ;
-	}
-}
 
-// ============ decode the cell ids =============
-uint TriventProc::getCellDif_id(int cell_id)
-{
-	return cell_id & 0xFF;
-}
-uint TriventProc::getCellAsic_id(int cell_id)
-{
-	return (cell_id & 0xFF00)>>8;
-}
-uint TriventProc::getCellChan_id(int cell_id)
-{
-	return (cell_id & 0x3F0000)>>16;
-}
-
-int* TriventProc::getPadIndex(uint dif_id, uint asic_id, uint chan_id)
-{
-	_index[0] = _index[1] = _index[2] = 0 ;
-
-	const auto it = _mapping.find(dif_id) ;
-	int DifZ = it->second.K ;
-	int DifY = it->second.shiftY ;
-
-	_index[0] = ( 1 + mapping::MapILargeHR2[chan_id] + mapping::AsicShiftI[asic_id] ) ;
-	_index[1] = ( 32 - (mapping::MapJLargeHR2[chan_id] + mapping::AsicShiftJ[asic_id]) ) + DifY ;
-	_index[2] = DifZ ;
-	streamlog_out( DEBUG0 ) << " Dif_id == " << dif_id
-							<< " Asic_id ==" << asic_id
-							<< " Chan_id ==" << chan_id
-							<< " I == " << _index[0]
-							<< " J == " << _index[1]
-							<< " K == " << _index[2]
-							<< std::endl;
-	return _index ;
-}
-//===============================================
 void TriventProc::getMaxTime()
 {
 	_maxtime = 0 ;
@@ -312,6 +228,7 @@ bool TriventProc::eventBuilder(LCCollection* col_event , unsigned int time_peak 
 	CellIDEncoder<CalorimeterHitImpl> cd( _outputFormat.c_str() , col_event) ;
 
 	std::map<int,int> asicMap ;
+	std::map<int,int> layerMap ;
 	std::map<unsigned int , unsigned int> ramFullDetectorMap ;
 
 	try
@@ -330,32 +247,37 @@ bool TriventProc::eventBuilder(LCCollection* col_event , unsigned int time_peak 
 
 			for ( const auto& rawhit : triggerHitMap.at(i) )
 			{
-				uint Dif_id  = getCellDif_id ( rawhit->getCellID0() ) ;
-				uint Asic_id = getCellAsic_id( rawhit->getCellID0() ) ;
-				uint Chan_id = getCellChan_id( rawhit->getCellID0() ) ;
+				auto difID = mapping::getDifID( rawhit->getCellID0() ) ;
+				auto asicID = mapping::getAsicID( rawhit->getCellID0() ) ;
+				auto padID = mapping::getPadID( rawhit->getCellID0() ) ;
 
-				if ( _mapping.find(Dif_id) == _mapping.end() )
+				if ( !mapping.isListedDif(difID) )
 				{
-					streamlog_out( DEBUG ) << "wtf dif : " << Dif_id << std::endl ;
+					streamlog_out( DEBUG ) << "wtf dif : " << difID << std::endl ;
 					continue ;
 				}
 
-				if ( Chan_id == 29 || Chan_id == 31 )
-					ramFullDetectorMap[Dif_id] ++ ;
+				if ( padID == 29 || padID == 31 )
+					ramFullDetectorMap[difID] ++ ;
 
-				if ( removeRamFullEvents && ramFullDetectorMap[Dif_id] > 70 )
+				if ( removeRamFullEvents && ramFullDetectorMap[difID] > 70 )
 				{
-					streamlog_out( DEBUG ) << "Reject ramFull event of dif : " << Dif_id << std::endl ;
+					streamlog_out( DEBUG ) << "Reject ramFull event of dif : " << difID << std::endl ;
 					return false ;
 				}
 
-				int I = getPadIndex(Dif_id, Asic_id, Chan_id)[0];
-				int J = getPadIndex(Dif_id, Asic_id, Chan_id)[1];
-				int K = getPadIndex(Dif_id, Asic_id, Chan_id)[2];
+				auto padIndex = mapping.getPadIndex(difID, asicID, padID) ;
+				int I = padIndex.at(0) ;
+				int J = padIndex.at(1) ;
+				int K = padIndex.at(2) ;
 
 				//find and remove square events
 				int asickey = findAsicKey(I,J,K) ;
 				asicMap[asickey] ++ ;
+				layerMap[K] ++ ;
+
+				if ( layerMap[K] > maxHitPerLayer )
+					return false ;
 
 				if( removeSquareEvents && asicMap[asickey] == 64 )
 				{
@@ -409,9 +331,9 @@ bool TriventProc::eventBuilder(LCCollection* col_event , unsigned int time_peak 
 				}
 				else if( _outputFormat == std::string("I:9,J:9,K-1:6,Dif_id:8,Asic_id:6,Chan_id:7") )
 				{
-					cd["Dif_id"] = Dif_id ;
-					cd["Asic_id"] = Asic_id ;
-					cd["Chan_id"] = Chan_id ;
+					cd["Dif_id"] = difID ;
+					cd["Asic_id"] = asicID ;
+					cd["Chan_id"] = padID ;
 				}
 				else
 				{
@@ -468,7 +390,7 @@ int TriventProc::findTheBifSignal(unsigned int timeStamp)
 
 	for ( auto& jt : it->second )
 	{
-		if ( getCellDif_id( jt->getCellID0() ) == cerenkovBif )
+		if ( mapping::getDifID( jt->getCellID0() ) == cerenkovBif )
 		{
 			//						std::cout << "Dif " << getCellDif_id( jt->getCellID0() )
 			//								  << " , Asic " << getCellAsic_id( jt->getCellID0() )
@@ -565,16 +487,15 @@ void TriventProc::processEvent( LCEvent* evtP )
 					getMaxTime() ;
 					computeTimeSpectrum() ;
 
-					if ( evtP->getEventNumber() == 25 )
+					if ( evtP->getEventNumber() > 0 )
 					{
+						trigger = static_cast<unsigned int> ( evtP->getEventNumber() ) ;
 						for ( unsigned int c = 0 ; c < timeSpectrum.size() ; ++c )
 						{
-							nHit = timeSpectrum.at(c) ;
 							clock = c ;
+							nHit = timeSpectrum.at(c) ;
 							tree->Fill() ;
-
 						}
-
 					}
 
 					std::cout << red << "  " << triggerHitMap.rbegin()->first * 200e-9*1000 << " ms" << normal << std::endl ;
@@ -690,6 +611,7 @@ void TriventProc::end()
 
 	rootFile->cd() ;
 	tree->Write() ;
+	rootFile->Purge() ;
 	rootFile->Close() ;
 	_lcWriter->close() ;
 }

@@ -1,0 +1,19 @@
+<marlin>
+
+  <execute>
+    <processor name="StreamToRoot"/>
+  </execute>
+
+  <global>
+    <parameter name="LCIOInputFiles"> /path/to/the/runFile </parameter>
+    <parameter name="Verbosity" type="string"> MESSAGE </parameter>
+    <parameter name="SupressCheck" value="false"/>
+  </global>
+
+  <processor name="StreamToRoot" type="FromStreamoutToRootProcessor">
+    <parameter name="HCALCollections" type="StringVec"> DHCALRawHits </parameter>
+    <parameter name="geometry" type="string"> /path/to/the/geometry.json </parameter>
+	<parameter name="RootFileName" type="string" > run.root </parameter>		
+  </processor>
+
+</marlin>

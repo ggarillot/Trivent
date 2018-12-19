@@ -18,9 +18,9 @@ if __name__ == '__main__' :
 	runNumber = str(args.runNumber) 
 
 	#dir = '/home/garillot/files/DATA/STREAMOUT/SPS_Nov2012'
-	#dir = '/home/garillot/files/DATA/STREAMOUT/SPS_Apr2015'
+	dir = '/home/guillaume/files/DATA/STREAMOUT/SPS_Apr2015'
 	#dir = '/home/garillot/files/DATA/STREAMOUT/H2_Sept2017'	
-	dir = '/home/garillot/files/DATA/STREAMOUT/SPS_Sept2018'
+	#dir = '/home/garillot/files/DATA/STREAMOUT/SPS_Sept2018'
 
 	print ('Searching files in ' + dir)
 
@@ -35,9 +35,9 @@ if __name__ == '__main__' :
 	print 'File List :'
 	print fileList
 
-	os.environ["MARLIN"] = '/home/garillot/ilcsoft/v01-19-05/Marlin/v01-15-02'
+	os.environ["MARLIN"] = '/home/guillaume/ilcsoft/v02-00-01/Marlin/v01-16'
 	os.environ["PATH"] = os.environ["MARLIN"] + '/bin:' + os.environ["PATH"]
-	os.environ["MARLIN_DLL"] = '/home/garillot/Trivent/lib/libTrivent.so'
+	os.environ["MARLIN_DLL"] = '/home/guillaume/Trivent/lib/libTrivent.so'
 
 	a = Trivent.Params()
 	a.energy = args.energy
@@ -45,7 +45,7 @@ if __name__ == '__main__' :
 	a.cerenkovDelay = 0
 
 	a.outputFileName = 'TDHCAL_' + str(sys.argv[1]) + '.slcio'
-
+	a.outputRootFileName = 'noise' + str(sys.argv[1]) + '.root'
 
 	Trivent.launch(a , fileList)
 

@@ -12,15 +12,13 @@
 #include <IMPL/CalorimeterHitImpl.h>
 #include <TTree.h>
 #include <TFile.h>
-#include <TH1.h>
-#include <TH1F.h>
+
 #include "IO/LCWriter.h"
 #include <map>
 #include <algorithm>
 #include <set>
 #include "Mapping.h"
 
-using namespace std;
 
 class TriventProc : public marlin::Processor
 {
@@ -34,21 +32,13 @@ class TriventProc : public marlin::Processor
 
 		void init() ;
 
-
 		void processEvent( LCEvent * evtP );
 
-		void processGeometry(std::string jsonFile) ;
 
-		void printDifGeom();
-
-		uint getCellDif_id(int cell_id) ;
-		uint getCellAsic_id(int cell_id) ;
-		uint getCellChan_id(int cell_id) ;
-
-		void getMaxTime();
+		void getMaxTime() ;
 		void computeTimeSpectrum() ;
 		bool isLocalPeak(unsigned int bin) ;
-		int* getPadIndex(uint dif_id, uint asic_id, uint chan_id) ;
+
 		bool eventBuilder(LCCollection* col_event, unsigned int time_peak, unsigned int prev_time_peak) ;
 		int	findTheBifSignal(unsigned int timeStamp) ;
 
@@ -60,11 +50,14 @@ class TriventProc : public marlin::Processor
 
 	protected :
 
+		std::string rootFileName = "" ;
 		TFile* rootFile = nullptr ;
 		TTree* tree = nullptr ;
 
-		int nHit = 0 ;
+		unsigned int nHit = 0 ;
+		unsigned int trigger = 0 ;
 		unsigned int clock = 0 ;
+
 		unsigned long long triggerBeginTime = 0 ;
 		unsigned long long timeInTrigger = 0 ;
 
@@ -72,8 +65,6 @@ class TriventProc : public marlin::Processor
 
 		bool isFirstEvent = true ;
 		//		double acquisitionTime = 0 ;
-		// xml test
-		std::map<std::string,std::string> m_parameters {{}} ;
 
 		std::map<unsigned int , std::vector<EVENT::RawCalorimeterHit*>> triggerHitMap {{}} ;
 		std::vector<unsigned int> timeSpectrum {} ;
@@ -85,14 +76,16 @@ class TriventProc : public marlin::Processor
 
 		std::string geometryFile = "" ;
 
+		mapping::Mapping mapping{} ;
+
 		std::vector<std::string> _hcalCollections {} ;
 
 		Int_t _elec_noise_cut = 500000 ;
 
-		std::map<unsigned int, mapping::Dif> _mapping = {{}} ;
 
 		bool removeSquareEvents = true ;
 		bool removeRamFullEvents = true ;
+		int maxHitPerLayer = 400 ;
 
 		unsigned int cerenkovBif = 3 ;
 		int cerenkovDelay = 0 ;

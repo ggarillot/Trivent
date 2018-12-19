@@ -15,6 +15,7 @@ class Params :
 		self.removeRamFullEvents = True
 		self.geometry = ""
 		self.outputFileName = "TDHCAL.slcio"
+		self.outputRootFileName = "noise.root"		
 		self.maxRecordNumber = 0
 
 
@@ -28,6 +29,7 @@ def launch(a , files) :
 
 	xmlFileName = str(pid) + '.xml'
 	tempOutputFile = str(pid) + '.slcio'
+	tempOutputFileRoot = str(pid) + '.root'
 
 	xml = '''<marlin>
 
@@ -54,6 +56,7 @@ def launch(a , files) :
     <parameter name="noiseCut" type="int">''' + str(a.noiseCut) + '''</parameter>
     <parameter name="timeWin" type="int">''' + str(a.timeWin) + '''</parameter>
 	<parameter name="LCIOOutputFile" type="string" >''' + tempOutputFile + '''</parameter>
+	<parameter name="RootNoiseFileName" type="string" >''' + tempOutputFileRoot + '''</parameter>		
   </processor>
 
 </marlin>'''
@@ -65,3 +68,4 @@ def launch(a , files) :
 	os.system('Marlin ' + xmlFileName)
 	os.system('rm ' + xmlFileName)
 	os.system('mv ' + tempOutputFile + ' ' + a.outputFileName)
+	os.system('mv ' + tempOutputFileRoot + ' ' + a.outputRootFileName)	
