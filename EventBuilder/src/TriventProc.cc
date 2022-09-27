@@ -298,13 +298,16 @@ bool TriventProc::eventBuilder(LCCollection* col_event , unsigned int time_peak 
 				caloHit->setTime( rawhit->getTimeStamp() ) ;
 
 				//fix bug threshold 2 <-> 1
+				/*
 				if ( (rawhit->getAmplitude()&3) > 2.5f )
 					caloHit->setEnergy(3.f) ;
 				else if ( (rawhit->getAmplitude()&3) > 1.5f )
 					caloHit->setEnergy(1.f) ;
 				else
 					caloHit->setEnergy(2.f) ;
-
+				*/
+				
+				caloHit->setEnergy(rawhit->getAmplitude());
 
 				//avoid two hit in the same cell
 				const auto it = std::find( hitKeys.begin() , hitKeys.end() , rawhit->getCellID0() ) ;
@@ -442,6 +445,12 @@ void TriventProc::processEvent( LCEvent* evtP )
 					if(numElements > _elec_noise_cut)
 					{
 						streamlog_out( MESSAGE ) << red << "TRIGGER SKIPED ..."<< normal <<std::endl;
+						break;
+					}
+					
+					if(numElements == 0)
+					{
+						streamlog_out( MESSAGE ) << red << "TRIGGER EMPTY ..."<< normal <<std::endl;
 						break;
 					}
 
@@ -587,7 +596,7 @@ void TriventProc::processEvent( LCEvent* evtP )
 					}
 
 				}
-				catch (lcio::DataNotAvailableException zero) {}
+				catch (lcio::DataNotAvailableException& zero) {}
 				catch ( std::out_of_range& e)
 				{
 					std::cout << e.what() << std::endl ;
@@ -597,7 +606,7 @@ void TriventProc::processEvent( LCEvent* evtP )
 				std::cout << magenta << "nEvents : " << currentTriggerNEvents << normal << std::endl ;
 			}
 		}
-		catch (lcio::DataNotAvailableException err) {}
+		catch (lcio::DataNotAvailableException& err) {}
 	}
 
 

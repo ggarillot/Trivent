@@ -17,10 +17,7 @@ if __name__ == '__main__' :
 
 	runNumber = str(args.runNumber) 
 
-	#dir = '/home/garillot/files/DATA/STREAMOUT/SPS_Nov2012'
-	dir = '/home/guillaume/files/DATA/STREAMOUT/SPS_Apr2015'
-	#dir = '/home/garillot/files/DATA/STREAMOUT/H2_Sept2017'	
-	#dir = '/home/garillot/files/DATA/STREAMOUT/SPS_Sept2018'
+	dir = '/home/acqilc/Desktop/Analysis/files/STREAMOUT'
 
 	print ('Searching files in ' + dir)
 
@@ -28,16 +25,16 @@ if __name__ == '__main__' :
 	fileList = []
 
 	for fileName in os.listdir(dir) :
-		if runNumber in fileName :
+		if f'R{runNumber}.slcio' in fileName :
 			fileList.append(dir + '/' + fileName)
 
 	fileList.sort()
-	print 'File List :'
-	print fileList
+	print('File List :')
+	print(fileList)
 
-	os.environ["MARLIN"] = '/home/guillaume/ilcsoft/v02-00-01/Marlin/v01-16'
-	os.environ["PATH"] = os.environ["MARLIN"] + '/bin:' + os.environ["PATH"]
-	os.environ["MARLIN_DLL"] = '/home/guillaume/Trivent/lib/libTrivent.so'
+	#os.environ["MARLIN"] = '/home/guillaume/ilcsoft/v02-00-01/Marlin/v01-16'
+	#os.environ["PATH"] = os.environ["MARLIN"] + '/bin:' + os.environ["PATH"]
+	os.environ["MARLIN_DLL"] = '/home/acqilc/Desktop/Analysis/Trivent/lib/libTrivent.so'
 
 	a = Trivent.Params()
 	a.energy = args.energy
@@ -53,3 +50,4 @@ if __name__ == '__main__' :
 
 	os.system('mkdir -p ' + outputDir)
 	os.system('mv ' + a.outputFileName + ' ' + outputDir)
+	os.system(f'mv noise{runNumber}.root /home/acqilc/Desktop/Analysis/files/noise')
